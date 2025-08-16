@@ -1,0 +1,8 @@
+/Users/locnguyen/src/code/jsonld_ex/_build/test/lib/jsonld_ex/native/jsonld_nif/release/deps/indoc-059ab34ceef8f36c.d: /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/lib.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/error.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/expr.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/unindent.rs
+
+/Users/locnguyen/src/code/jsonld_ex/_build/test/lib/jsonld_ex/native/jsonld_nif/release/deps/libindoc-059ab34ceef8f36c.dylib: /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/lib.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/error.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/expr.rs /Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/unindent.rs
+
+/Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/lib.rs:
+/Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/error.rs:
+/Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/expr.rs:
+/Users/locnguyen/.local/share/mise/installs/rust/1.87.0/registry/src/index.crates.io-1949cf8c6b5b557f/indoc-2.0.6/src/unindent.rs:
