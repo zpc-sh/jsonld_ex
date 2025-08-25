@@ -1,0 +1,274 @@
+# BUILD: Advanced CI/CD Pipeline for JsonldEx
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # BUILD: Code quality and linting
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.16'
+        otp-version: '26'
+        
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+        
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          _build
+          ~/.cargo/registry
+          ~/.cargo/git
+          native/jsonld_nif/target
+        key: quality-${{ runner.os }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+        
+    - name: Install dependencies
+      run: |
+        mix deps.get
+        cd native/jsonld_nif && cargo fetch
+        
+    - name: Check Elixir formatting
+      run: mix format --check-formatted
+      
+    - name: Check Rust formatting  
+      run: cd native/jsonld_nif && cargo fmt -- --check
+      
+    - name: Lint Elixir code
+      run: mix credo --strict
+      
+    - name: Lint Rust code
+      run: cd native/jsonld_nif && cargo clippy -- -D warnings
+
+  # BUILD: Cross-platform testing matrix
+  test:
+    name: Test (${{ matrix.os }}, Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # BUILD: Linux builds with different Elixir/OTP versions
+          - os: ubuntu-latest
+            elixir: '1.15'
+            otp: '25'
+            rust: stable
+          - os: ubuntu-latest  
+            elixir: '1.16'
+            otp: '26'
+            rust: stable
+            
+          # BUILD: macOS builds (Apple Silicon optimization)
+          - os: macos-latest
+            elixir: '1.16'
+            otp: '26'
+            rust: stable
+            simd: true
+            
+          # BUILD: Windows builds
+          - os: windows-latest
+            elixir: '1.16' 
+            otp: '26'
+            rust: stable
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: ${{ matrix.elixir }}
+        otp-version: ${{ matrix.otp }}
+        
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          _build
+          ~/.cargo/registry
+          ~/.cargo/git
+          native/jsonld_nif/target
+        key: test-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+        
+    - name: Install dependencies
+      run: mix deps.get
+      
+    - name: Set SIMD optimizations (Apple Silicon)
+      if: matrix.simd
+      run: |
+        echo "RUSTFLAGS=-C target-cpu=native -C target-feature=+neon" >> $GITHUB_ENV
+        
+    - name: Run tests
+      run: mix test
+      
+    - name: Run benchmarks
+      run: mix run bench/turbo_benchmark.exs
+
+  # BUILD: Performance benchmarking on optimized hardware
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: [quality, test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.16'
+        otp-version: '26'
+        
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+        
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          _build
+          ~/.cargo/registry
+          ~/.cargo/git
+          native/jsonld_nif/target
+        key: bench-${{ runner.os }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+        
+    - name: Install dependencies
+      run: mix deps.get
+      
+    - name: Build production release
+      run: |
+        export RUSTFLAGS="-C target-cpu=native -C lto=fat -C codegen-units=1"
+        export MIX_ENV=prod
+        mix compile
+        
+    - name: Run comprehensive benchmarks
+      run: ./scripts/build.sh bench
+      
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: bench/results/
+
+  # BUILD: Security audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.16'
+        otp-version: '26'
+        
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+      
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          _build
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: security-${{ runner.os }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+        
+    - name: Install dependencies
+      run: mix deps.get
+      
+    - name: Audit Elixir dependencies
+      run: mix deps.audit
+      
+    - name: Audit Rust dependencies
+      run: cd native/jsonld_nif && cargo audit
+
+  # BUILD: Documentation and release
+  docs-and-release:
+    name: Documentation and Release
+    runs-on: ubuntu-latest
+    needs: [quality, test, benchmark, security]
+    if: github.event_name == 'release'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.16'
+        otp-version: '26'
+        
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          _build
+          ~/.cargo/registry
+          ~/.cargo/git
+          native/jsonld_nif/target
+        key: release-${{ runner.os }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+        
+    - name: Install dependencies
+      run: mix deps.get
+      
+    - name: Build production release
+      run: |
+        export RUSTFLAGS="-C target-cpu=native -C lto=fat -C codegen-units=1 -C panic=abort"
+        export MIX_ENV=prod  
+        mix compile
+        
+    - name: Generate documentation
+      run: mix docs
+      
+    - name: Build Hex package
+      run: mix hex.build
+      
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-package
+        path: |
+          *.tar
+          doc/

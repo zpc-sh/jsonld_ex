@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mix compile)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix run:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:w3.org)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)",
+      "Bash(make:*)",
+      "Bash(./scripts/build.sh:*)",
+      "Bash(chmod:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/locnguyen/src/code/markdown_ld",
+      "/Users/locnguyen/src/code"
+    ]
+  }
+}
