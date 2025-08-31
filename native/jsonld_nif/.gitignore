@@ -1,1 +1,3 @@
 /target
+/# build artifacts created by rustler/rebar
+/true/

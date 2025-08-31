@@ -10,4 +10,29 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+
+# Elixir tooling caches
+.elixir-tools/
+.elixir_tools/
+
+# Native build artifacts (Rust/C/C++)
+priv/**/lib*.so
+priv/**/lib*.dylib
+priv/**/lib*.dll
+native/**/*target/
+native/**/debug/
+native/**/release/
+native/**/true/
+native/**/*.o
+native/**/*.a
+native/**/*.rlib
+native/**/*.dylib
+native/**/*.dll
+native/**/*.bc
 
