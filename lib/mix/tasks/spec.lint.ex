@@ -56,7 +56,10 @@ defmodule Mix.Tasks.Spec.Lint do
     if File.exists?(ack_path) do
       with {:ok, ack} <- decode(ack_path),
            {:ok, schema} <- read_schema(Path.join(schema_root, "ack.schema.json")),
-           :ok <- validate(ack, schema) do
+           :ok <- validate(ack, schema),
+           true <- ts_ok?(ack["updated_at"], "ack.updated_at") do
+        # ETA (optional)
+        _ = ts_optional_ok?(ack["eta_iso8601"], "ack.eta_iso8601")
         true
       else
         {:error, reason} -> Mix.shell().error("Ack validation failed: #{inspect(reason)}"); false
@@ -87,7 +90,8 @@ defmodule Mix.Tasks.Spec.Lint do
         {:ok, m} ->
           base_checks =
             with true <- is_binary(m["body"]) and byte_size(m["body"]) > 0 or (Mix.shell().error("Empty body: #{mpath}"); false),
-                 true <- attachments_ok?(root, mpath, m["attachments"] || []) do
+                 true <- attachments_ok?(root, mpath, m["attachments"] || []),
+                 true <- ts_ok?(m["created_at"], "message.created_at") do
               true
             else
               _ -> false
@@ -124,6 +128,20 @@ defmodule Mix.Tasks.Spec.Lint do
       _ -> {:error, :schema_load_failed}
     end
   end
+
+  defp ts_ok?(value, label) do
+    case value do
+      s when is_binary(s) ->
+        case DateTime.from_iso8601(s) do
+          {:ok, _dt, _} -> true
+          _ -> Mix.shell().error("Invalid ISO8601 timestamp for #{label}: #{inspect(s)}"); false
+        end
+      _ -> Mix.shell().error("Missing or invalid timestamp for #{label}"); false
+    end
+  end
+
+  defp ts_optional_ok?(nil, _label), do: true
+  defp ts_optional_ok?(value, label), do: ts_ok?(value, label)
 
   # Minimal JSON Schema validator supporting: required, type, enum, and nested object required
   defp validate(doc, %{"type" => "object"} = schema) when is_map(doc) do
