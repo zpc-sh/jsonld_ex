@@ -8,7 +8,7 @@ defmodule Mix.Tasks.Spec.Apply do
       [--target /path/to/target/repo] \
       [--dry-run] [--force] [--diff] \
       [--baseline-rev <git_rev>] [--summary-json] \
-      [--replace-create]
+      [--replace-create] [--allow-type-change]
 
   Scans messages of type "proposal" under the chosen source (default: inbox),
   finds attachments named `patch.json`, and applies JSON Pointer operations
@@ -37,7 +37,8 @@ defmodule Mix.Tasks.Spec.Apply do
       diff: :boolean,
       baseline_rev: :string,
       summary_json: :boolean,
-      replace_create: :boolean
+      replace_create: :boolean,
+      allow_type_change: :boolean
     ])
     id = req!(opts, :id)
     source = Keyword.get(opts, :source, "inbox")
@@ -48,6 +49,7 @@ defmodule Mix.Tasks.Spec.Apply do
     baseline_rev_opt = Keyword.get(opts, :baseline_rev, nil)
     summary_json? = Keyword.get(opts, :summary_json, false)
     replace_create? = Keyword.get(opts, :replace_create, false)
+    allow_type_change? = Keyword.get(opts, :allow_type_change, false)
 
     req_root = Path.join(["work", "spec_requests", id])
     src_dir = Path.join(req_root, source)
@@ -67,7 +69,7 @@ defmodule Mix.Tasks.Spec.Apply do
           |> Enum.filter(&String.ends_with?(&1, "patch.json"))
           |> Enum.reduce(acc, fn rel, acc2 ->
             patch_path = Path.join(req_root, rel)
-            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?)
+            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?)
             info = case result do
               {:ok, info} when dry_run ->
                 Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}, baseline_git_ok=#{info.baseline_git_ok})")
@@ -96,7 +98,7 @@ defmodule Mix.Tasks.Spec.Apply do
     :ok
   end
 
-  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?) do
+  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?) do
     patch = Jason.decode!(File.read!(patch_path))
     file_rel = patch["file"] || get_in(msg, ["ref", "path"]) || Mix.raise("Patch missing file and message.ref.path")
     base_ptr = patch["base_pointer"] || get_in(msg, ["ref", "json_pointer"]) || ""
@@ -157,9 +159,19 @@ defmodule Mix.Tasks.Spec.Apply do
           "remove" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for remove: #{ptr}")
           _ -> :ok
         end
-        # If replace and path missing but replace_create? is true, treat it as add
+        # Type check: prevent replacing object/array with scalar (and vice versa) unless allowed
         effective_op =
-          if op["op"] == "replace" and not pointer_exists?(acc, ptr) and replace_create?, do: Map.put(op, "op", "add"), else: op
+          cond do
+            op["op"] == "replace" and pointer_exists?(acc, ptr) and not allow_type_change? ->
+              case get_in_pointer(acc, pointer_tokens(ptr)) do
+                {:ok, current} ->
+                  v = Map.get(op, "value")
+                  if type_tag(current) == type_tag(v), do: op, else: Mix.raise("Type change not allowed at #{ptr}: #{type_tag(current)} -> #{type_tag(v)}")
+                :error -> op
+              end
+            op["op"] == "replace" and not pointer_exists?(acc, ptr) and replace_create? -> Map.put(op, "op", "add")
+            true -> op
+          end
         {apply_op!(acc, base_ptr, effective_op), paths ++ [ptr]}
       end)
 
@@ -320,6 +332,14 @@ defmodule Mix.Tasks.Spec.Apply do
     end
   end
   defp get_in_pointer(_other, _rest), do: :error
+
+  defp type_tag(v) when is_map(v), do: :object
+  defp type_tag(v) when is_list(v), do: :array
+  defp type_tag(v) when is_binary(v), do: :string
+  defp type_tag(v) when is_number(v), do: :number
+  defp type_tag(v) when is_boolean(v), do: :boolean
+  defp type_tag(nil), do: :null
+  defp type_tag(_), do: :other
 
   defp write_temp_and_prepare_diff(%{before: before, after: after, id: id, file: file} = _info) do
     base_dir = Path.join([File.cwd!(), "work", ".tmp", id])
