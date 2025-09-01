@@ -1,0 +1,47 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "id": "@id",
+    "type": "@type",
+
+    "SpecRequest": "https://example.org/SpecRequest",
+    "SpecAck": "https://example.org/SpecAck",
+    "SpecMessage": "https://example.org/SpecMessage",
+
+    "project": "https://schema.org/identifier",
+    "title": "https://schema.org/name",
+    "motivation": "https://schema.org/description",
+    "api": "https://example.org/api",
+    "errors": "https://schema.org/error",
+    "determinism": "https://example.org/determinism",
+    "telemetry": "https://example.org/telemetry",
+    "tests": "https://schema.org/hasPart",
+    "acceptance": "https://example.org/acceptanceCriteria",
+    "attachments": {
+      "@id": "https://schema.org/associatedMedia",
+      "@container": "@set"
+    },
+    "statuses": {
+      "@id": "https://example.org/statuses",
+      "@container": "@set"
+    },
+    "status": "https://schema.org/status",
+    "updatedAt": {
+      "@id": "https://schema.org/dateModified",
+      "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+    },
+
+    "from": "https://example.org/from",
+    "agent": "https://schema.org/softwareVersion",
+    "ref": "https://example.org/ref",
+    "path": "https://schema.org/filePath",
+    "json_pointer": "https://example.org/jsonPointer",
+    "body": "https://schema.org/text",
+    "relatesTo": "https://example.org/relatesTo",
+    "createdAt": {
+      "@id": "https://schema.org/dateCreated",
+      "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+    }
+  }
+}
+
