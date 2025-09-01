@@ -21,6 +21,9 @@ Thumbs.db
 .elixir-tools/
 .elixir_tools/
 
+# Workflow outputs
+work/
+
 # Native build artifacts (Rust/C/C++)
 priv/**/lib*.so
 priv/**/lib*.dylib
@@ -35,4 +38,3 @@ native/**/*.rlib
 native/**/*.dylib
 native/**/*.dll
 native/**/*.bc
-
