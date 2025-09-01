@@ -27,13 +27,14 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -79,13 +80,14 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -126,13 +128,15 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
+          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -173,13 +177,15 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
+          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -225,13 +231,14 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET --features $FEATURES
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -278,13 +285,14 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET --features $FEATURES
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -326,13 +334,15 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET --features $FEATURES
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
+          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |
@@ -374,13 +384,15 @@ jobs:
         run: |
           cd native/jsonld_nif
           cargo build --release --target $TARGET --features $FEATURES
-      - name: Package artifact
+      - name: Package artifact (tar.gz)
         run: |
+          set -euxo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
+          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
-          zstd -19 -f -o "$OUT" "$SRC"
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
         run: |

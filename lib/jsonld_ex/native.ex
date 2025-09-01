@@ -2,7 +2,7 @@ defmodule JsonldEx.Native do
   @version Mix.Project.config()[:version]
   @nif_features (
     case System.get_env("JSONLD_NIF_FEATURES") do
-      nil -> ["ssi_urdna2015"]
+      nil -> []
       "" -> []
       "none" -> []
       f -> String.split(f, ",", trim: true)

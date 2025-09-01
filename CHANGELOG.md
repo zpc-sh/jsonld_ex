@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2025-09-01
+
+### Changed
+- Align precompiled NIF artifact names and format with `rustler_precompiled` expectations (tar.gz, name includes version, NIF version, and target), enabling successful runtime downloads.
+- Add clear Publishing Guide to README with release steps and local build fallbacks.
+- Default NIF features are now empty (no features) unless explicitly set via `JSONLD_NIF_FEATURES`; opt into `ssi_urdna2015` to use the ssi-backed URDNA2015 path.
+
+### Added
+- GitHub Actions workflow builds now upload tar.gz artifacts for Linux/macOS (x86_64/aarch64) including `ssi_urdna2015` feature variants, plus per-file `.sha256` and aggregate `checksums.txt`.
+
+### Notes
+- If you experienced sporadic `beam_lib` atom decoding errors with Elixir 1.17 type checker (e.g., during `Finch.Telemetry`), perform a full clean and recompile; upgrading to latest Elixir/OTP patches is recommended.
+
 ## [0.4.1] - 2025-09-01
 
 ### Added

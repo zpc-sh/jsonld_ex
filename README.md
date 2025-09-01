@@ -141,6 +141,27 @@ context_string = Jason.encode!(context)
   - `JSONLD_CANON_PROVIDER=none|ssi|vendor` selects canonicalization backend.
 - Release artifacts are expected under: `https://github.com/nocsi/jsonld/releases/download/v<version>/`.
 
+#### Publishing guide
+- Bump `version` in `mix.exs` and ensure the tag matches (`v<version>`).
+- Create a GitHub Release with tag `v<version>`; this triggers the
+  `build-precompiled-nifs` workflow to build and upload assets for all
+  supported targets and NIF versions.
+- Verify uploaded assets follow the expected naming, for example:
+  - `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin.so.tar.gz`
+  - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-gnu.so.tar.gz`
+  - corresponding `.sha256` files and aggregated `checksums.txt`.
+- After assets are present, publish the Hex package:
+  - `mix hex.build`
+  - `mix hex.publish`
+
+If assets are temporarily missing or you need to build locally, either:
+- Set `JSONLD_NIF_FORCE_BUILD=1` when compiling, or
+- Add to `config/config.exs`:
+  `config :rustler_precompiled, :force_build, jsonld_ex: true`
+
+Note: For local builds, ensure your Rust toolchain supports Cargo.lock v4
+(`cargo --version` ≥ 1.79 recommended).
+
 ### Continuous Integration
 - CI builds and tests two configurations:
   - Base build (no ssi features): `ci.yml` job `build-test-base`.
