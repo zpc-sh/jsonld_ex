@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/spec-request.schema.json",
+  "title": "Spec Request",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "title": { "type": "string" },
+    "motivation": { "type": "string" },
+    "api": { "type": ["object", "null"] },
+    "errors": { "type": ["array", "null"], "items": { "type": "string" } },
+    "determinism": { "type": ["string", "null"] },
+    "telemetry": { "type": ["object", "null"] },
+    "tests": { "type": ["array", "null"], "items": { "type": "string" } },
+    "acceptance": { "type": ["string", "object", "null"] },
+    "attachments": { "type": ["array", "null"], "items": { "type": "string" } }
+  },
+  "required": ["title"],
+  "description": "Top-level request.json expected by the spec workflow. Fields are intentionally permissive to allow iteration."
+}
+
