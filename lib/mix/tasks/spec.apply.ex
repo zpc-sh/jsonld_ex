@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Spec.Apply do
   @shortdoc "Apply proposal patch.json attachments from messages to target files"
   @moduledoc """
   Usage:
-    mix spec.apply --id <request_id> [--source inbox|outbox] [--target /path/to/target/repo] [--dry-run] [--force]
+    mix spec.apply --id <request_id> [--source inbox|outbox] [--target /path/to/target/repo] [--dry-run] [--force] [--diff]
 
   Scans messages of type "proposal" under the chosen source (default: inbox),
   finds attachments named `patch.json`, and applies JSON Pointer operations
@@ -23,12 +23,13 @@ defmodule Mix.Tasks.Spec.Apply do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, source: :string, target: :string, dry_run: :boolean, force: :boolean])
+    {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, source: :string, target: :string, dry_run: :boolean, force: :boolean, diff: :boolean])
     id = req!(opts, :id)
     source = Keyword.get(opts, :source, "inbox")
     target_root = Keyword.get(opts, :target, File.cwd!())
     dry_run = Keyword.get(opts, :dry_run, false)
     force = Keyword.get(opts, :force, false)
+    show_diff = Keyword.get(opts, :diff, false)
 
     req_root = Path.join(["work", "spec_requests", id])
     src_dir = Path.join(req_root, source)
@@ -47,19 +48,21 @@ defmodule Mix.Tasks.Spec.Apply do
         |> Enum.filter(&String.ends_with?(&1, "patch.json"))
         |> Enum.each(fn rel ->
           patch_path = Path.join(req_root, rel)
-          result = apply_patch!(patch_path, msg, target_root, dry_run, force)
+          result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id)
           case result do
             {:ok, info} when dry_run ->
               Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok})")
+              if show_diff, do: print_diff_preview(info)
             {:ok, info} ->
               Mix.shell().info("Applied #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}) from #{rel} (msg #{Path.basename(msg_path)})")
+              if show_diff, do: print_diff_preview(info)
           end
         end)
       end)
     end
   end
 
-  defp apply_patch!(patch_path, msg, target_root, dry_run, force) do
+  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id) do
     patch = Jason.decode!(File.read!(patch_path))
     file_rel = patch["file"] || get_in(msg, ["ref", "path"]) || Mix.raise("Patch missing file and message.ref.path")
     base_ptr = patch["base_pointer"] || get_in(msg, ["ref", "json_pointer"]) || ""
@@ -88,11 +91,18 @@ defmodule Mix.Tasks.Spec.Apply do
         {apply_op!(acc, base_ptr, op), paths ++ [ptr]}
       end)
 
+    before_pretty = Jason.encode!(json, pretty: true)
+    after_pretty = Jason.encode!(final, pretty: true)
+
+    info = %{file: file_rel, baseline_ok: baseline_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
+
     if dry_run do
-      {:ok, %{file: file_rel, baseline_ok: baseline_ok, paths: applied_paths}}
+      if show_diff, do: _ = write_temp_and_prepare_diff(info)
+      {:ok, info}
     else
-      File.write!(target_path, Jason.encode_to_iodata!(final, pretty: true))
-      {:ok, %{file: file_rel, baseline_ok: baseline_ok, paths: applied_paths}}
+      File.write!(target_path, after_pretty)
+      if show_diff, do: _ = write_temp_and_prepare_diff(info)
+      {:ok, info}
     end
   end
 
@@ -194,6 +204,25 @@ defmodule Mix.Tasks.Spec.Apply do
       String.downcase(expected_hex) == actual
     rescue
       _ -> false
+    end
+  end
+
+  defp write_temp_and_prepare_diff(%{before: before, after: after, id: id, file: file} = _info) do
+    base_dir = Path.join([File.cwd!(), "work", ".tmp", id])
+    File.mkdir_p!(base_dir)
+    before_path = Path.join(base_dir, Path.basename(file) <> ".before.json")
+    after_path = Path.join(base_dir, Path.basename(file) <> ".after.json")
+    File.write!(before_path, before)
+    File.write!(after_path, after)
+    {out, _} = System.cmd("git", ["--no-pager", "diff", "--no-index", "--no-color", before_path, after_path], stderr_to_stdout: true)
+    {before_path, after_path, out}
+  end
+
+  defp print_diff_preview(%{file: file} = info) do
+    case write_temp_and_prepare_diff(info) do
+      {before_path, after_path, out} ->
+        Mix.shell().info("\n--- Unified diff (#{file})\n#{before_path} -> #{after_path}\n\n" <> out)
+      _ -> :ok
     end
   end
 end
