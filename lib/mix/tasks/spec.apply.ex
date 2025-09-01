@@ -8,7 +8,8 @@ defmodule Mix.Tasks.Spec.Apply do
       [--target /path/to/target/repo] \
       [--dry-run] [--force] [--diff] \
       [--baseline-rev <git_rev>] [--summary-json] \
-      [--replace-create] [--allow-type-change]
+      [--replace-create] [--allow-type-change] \
+      [--format pretty|compact]
 
   Scans messages of type "proposal" under the chosen source (default: inbox),
   finds attachments named `patch.json`, and applies JSON Pointer operations
@@ -38,7 +39,8 @@ defmodule Mix.Tasks.Spec.Apply do
       baseline_rev: :string,
       summary_json: :boolean,
       replace_create: :boolean,
-      allow_type_change: :boolean
+      allow_type_change: :boolean,
+      format: :string
     ])
     id = req!(opts, :id)
     source = Keyword.get(opts, :source, "inbox")
@@ -50,6 +52,8 @@ defmodule Mix.Tasks.Spec.Apply do
     summary_json? = Keyword.get(opts, :summary_json, false)
     replace_create? = Keyword.get(opts, :replace_create, false)
     allow_type_change? = Keyword.get(opts, :allow_type_change, false)
+    format_choice = (Keyword.get(opts, :format, "pretty") |> String.downcase())
+    pretty? = format_choice != "compact"
 
     req_root = Path.join(["work", "spec_requests", id])
     src_dir = Path.join(req_root, source)
@@ -69,7 +73,7 @@ defmodule Mix.Tasks.Spec.Apply do
           |> Enum.filter(&String.ends_with?(&1, "patch.json"))
           |> Enum.reduce(acc, fn rel, acc2 ->
             patch_path = Path.join(req_root, rel)
-            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?)
+            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?, pretty?)
             info = case result do
               {:ok, info} when dry_run ->
                 Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}, baseline_git_ok=#{info.baseline_git_ok})")
@@ -98,11 +102,11 @@ defmodule Mix.Tasks.Spec.Apply do
     :ok
   end
 
-  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?) do
+  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?, allow_type_change?, pretty?) do
     patch = Jason.decode!(File.read!(patch_path))
     file_rel = patch["file"] || get_in(msg, ["ref", "path"]) || Mix.raise("Patch missing file and message.ref.path")
     base_ptr = patch["base_pointer"] || get_in(msg, ["ref", "json_pointer"]) || ""
-    ops = patch["ops"] || Mix.raise("Patch missing ops")
+    ops = patch["ops"]
 
     target_path = Path.join(target_root, file_rel)
     content = File.read!(target_path)
@@ -146,39 +150,46 @@ defmodule Mix.Tasks.Spec.Apply do
     end
 
     {final, applied_paths} =
-      Enum.reduce(ops, {json, []}, fn op, {acc, paths} ->
-        ptr = normalize_ptr(base_ptr, Map.fetch!(op, "path"))
-        # Existence checks for replace/remove
-        case op["op"] do
-          "replace" ->
-            cond do
-              pointer_exists?(acc, ptr) -> :ok
-              replace_create? -> :ok
-              true -> Mix.raise("Pointer not found for replace: #{ptr}")
+      cond do
+        is_list(ops) ->
+          Enum.reduce(ops, {json, []}, fn op, {acc, paths} ->
+            op_name = Map.fetch!(op, "op")
+            ptr = normalize_ptr(base_ptr, Map.fetch!(op, "path"))
+            # Existence checks for replace/remove
+            case op_name do
+              "replace" ->
+                cond do
+                  pointer_exists?(acc, ptr) -> :ok
+                  replace_create? -> :ok
+                  true -> Mix.raise("Pointer not found for replace: #{ptr}")
+                end
+              "remove" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for remove: #{ptr}")
+              _ -> :ok
             end
-          "remove" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for remove: #{ptr}")
-          _ -> :ok
-        end
-        # Type check: prevent replacing object/array with scalar (and vice versa) unless allowed
-        effective_op =
-          cond do
-            op["op"] == "replace" and pointer_exists?(acc, ptr) and not allow_type_change? ->
-              case get_in_pointer(acc, pointer_tokens(ptr)) do
-                {:ok, current} ->
-                  v = Map.get(op, "value")
-                  if type_tag(current) == type_tag(v), do: op, else: Mix.raise("Type change not allowed at #{ptr}: #{type_tag(current)} -> #{type_tag(v)}")
-                :error -> op
+            # Type check: prevent replacing object/array with scalar (and vice versa) unless allowed
+            effective_op =
+              cond do
+                op_name == "replace" and pointer_exists?(acc, ptr) and not allow_type_change? ->
+                  case get_in_pointer(acc, pointer_tokens(ptr)) do
+                    {:ok, current} ->
+                      v = Map.get(op, "value")
+                      if type_tag(current) == type_tag(v), do: op, else: Mix.raise("Type change not allowed at #{ptr}: #{type_tag(current)} -> #{type_tag(v)}")
+                    :error -> op
+                  end
+                op_name == "replace" and not pointer_exists?(acc, ptr) and replace_create? -> Map.put(op, "op", "add")
+                true -> op
               end
-            op["op"] == "replace" and not pointer_exists?(acc, ptr) and replace_create? -> Map.put(op, "op", "add")
-            true -> op
-          end
-        {apply_op!(acc, base_ptr, effective_op), paths ++ [ptr]}
-      end)
+            {apply_op!(acc, base_ptr, effective_op), paths ++ [ptr]}
+          end)
+        is_map(patch["merge"]) ->
+          {json_merge(json, patch["merge"]), ["(merge)"]}
+        true -> Mix.raise("Patch missing ops or merge document")
+      end
 
-    before_pretty = Jason.encode!(json, pretty: true)
-    after_pretty = Jason.encode!(final, pretty: true)
+    before_str = if pretty?, do: Jason.encode!(json, pretty: true), else: Jason.encode!(json)
+    after_str = if pretty?, do: Jason.encode!(final, pretty: true), else: Jason.encode!(final)
 
-    info = %{file: file_rel, baseline_ok: baseline_ok, baseline_git_ok: baseline_git_ok, baseline_git_hash_ok: baseline_git_hash_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
+    info = %{file: file_rel, baseline_ok: baseline_ok, baseline_git_ok: baseline_git_ok, baseline_git_hash_ok: baseline_git_hash_ok, paths: applied_paths, before: before_str, after: after_str, id: id}
 
     if dry_run do
       if show_diff do
@@ -188,7 +199,7 @@ defmodule Mix.Tasks.Spec.Apply do
         {:ok, info}
       end
     else
-      File.write!(target_path, after_pretty)
+      File.write!(target_path, after_str)
       if show_diff do
         {before_path, after_path, out} = write_temp_and_prepare_diff(info)
         {:ok, Map.merge(info, %{diff_before: before_path, diff_after: after_path, diff: out})}
@@ -204,6 +215,23 @@ defmodule Mix.Tasks.Spec.Apply do
       "add" -> json_put(doc, ptr, Map.fetch!(o, "value"), :add)
       "replace" -> json_put(doc, ptr, Map.fetch!(o, "value"), :replace)
       "remove" -> json_remove(doc, ptr)
+      "copy" ->
+        from = normalize_ptr(base, Map.fetch!(o, "from"))
+        case get_in_pointer(doc, pointer_tokens(from)) do
+          {:ok, v} ->
+            mode = if pointer_exists?(doc, ptr), do: :replace, else: :add
+            json_put(doc, ptr, v, mode)
+          :error -> Mix.raise("Pointer not found for copy.from: #{from}")
+        end
+      "move" ->
+        from = normalize_ptr(base, Map.fetch!(o, "from"))
+        case get_in_pointer(doc, pointer_tokens(from)) do
+          {:ok, v} ->
+            mode = if pointer_exists?(doc, ptr), do: :replace, else: :add
+            doc1 = json_remove(doc, from)
+            json_put(doc1, ptr, v, mode)
+          :error -> Mix.raise("Pointer not found for move.from: #{from}")
+        end
       other -> Mix.raise("Unsupported op: #{inspect(other)}")
     end
   end
@@ -228,6 +256,18 @@ defmodule Mix.Tasks.Spec.Apply do
     remove_in_pointer(doc, tokens)
   end
 
+  # RFC 7396 (JSON Merge Patch): null deletes, objects merge recursively, other values replace
+  defp json_merge(target, patch) when is_map(target) and is_map(patch) do
+    Enum.reduce(patch, target, fn {k, v}, acc ->
+      cond do
+        is_nil(v) -> Map.delete(acc, k)
+        is_map(v) and is_map(Map.get(acc, k)) -> Map.put(acc, k, json_merge(Map.get(acc, k), v))
+        true -> Map.put(acc, k, v)
+      end
+    end)
+  end
+  defp json_merge(_target, patch), do: patch
+
   defp pointer_tokens(""), do: []
   defp pointer_tokens("/"), do: []
   defp pointer_tokens(path) do
@@ -241,7 +281,7 @@ defmodule Mix.Tasks.Spec.Apply do
   defp decode_index(seg) do
     case Integer.parse(seg) do
       {i, ""} -> {:idx, i}
-      _ -> {:key, seg}
+      _ -> if seg == "-", do: {:append}, else: {:key, seg}
     end
   end
 
@@ -256,6 +296,7 @@ defmodule Mix.Tasks.Spec.Apply do
       true -> Mix.raise("Invalid list index #{i} for mode #{mode}")
     end
   end
+  defp put_in_pointer(list, [{:append}], val, :add) when is_list(list), do: list ++ [val]
   defp put_in_pointer(doc, [{:key, k} | rest], val, mode) when is_map(doc) do
     child = Map.get(doc, k, default_for(rest))
     Map.put(doc, k, put_in_pointer(child, rest, val, mode))
@@ -268,6 +309,10 @@ defmodule Mix.Tasks.Spec.Apply do
       i == length(list) -> list ++ [updated]
       true -> Mix.raise("Invalid list index #{i}")
     end
+  end
+  defp put_in_pointer(list, [{:append} | rest], val, mode) when is_list(list) do
+    updated = put_in_pointer(default_for(rest), rest, val, mode)
+    list ++ [updated]
   end
   defp put_in_pointer(_other, _rest, _val, _mode), do: Mix.raise("Unsupported structure for pointer")
 
@@ -283,10 +328,12 @@ defmodule Mix.Tasks.Spec.Apply do
     v = Enum.at(list, i)
     List.replace_at(list, i, remove_in_pointer(v, rest))
   end
+  defp remove_in_pointer(list, [{:append} | _rest]) when is_list(list), do: list
   defp remove_in_pointer(other, _), do: other
 
   defp default_for([{:idx, _} | _]), do: []
   defp default_for([{:key, _} | _]), do: %{}
+  defp default_for([{:append} | _]), do: []
 
   defp req!(opts, key), do: Keyword.get(opts, key) || Mix.raise("Missing --#{key}")
 
