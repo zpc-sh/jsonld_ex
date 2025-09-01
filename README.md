@@ -9,6 +9,15 @@
 
 High-performance JSON-LD processing library for Elixir with Rust NIF backend.
 
+Quick API
+- Canonicalize: `JSONLD.c14n(term, algorithm: :urdna2015)` → `{:ok, %{nquads: string, bnode_map: map}}`
+- Hash: `JSONLD.hash(term, form: :urdna2015_nquads | :stable_json)` → `{:ok, %{algorithm: :sha256, form: atom, hash: hex, quad_count: non_neg_integer}}`
+- Equality: `JSONLD.equal?(a, b, form: :urdna2015_nquads | :stable_json)` → `boolean`
+
+Notes
+- When the Rust NIF is unavailable, canonicalization falls back to a simplified Elixir path. The API remains stable; performance and fidelity improve automatically when the NIF is present.
+- Use `form: :stable_json` for deterministic hashing without RDF conversion; keys are sorted and values encoded canonically.
+
 ## Performance
 
 JsonldEx delivers exceptional performance through its Rust-based NIF implementation:
@@ -103,4 +112,3 @@ context_string = Jason.encode!(context)
 ## License
 
 MIT
-
