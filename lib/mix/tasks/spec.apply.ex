@@ -52,7 +52,8 @@ defmodule Mix.Tasks.Spec.Apply do
     summary_json? = Keyword.get(opts, :summary_json, false)
     replace_create? = Keyword.get(opts, :replace_create, false)
     allow_type_change? = Keyword.get(opts, :allow_type_change, false)
-    format_choice = (Keyword.get(opts, :format, "pretty") |> String.downcase())
+    # Default to compact to minimize diff churn
+    format_choice = (Keyword.get(opts, :format, "compact") |> String.downcase())
     pretty? = format_choice != "compact"
 
     req_root = Path.join(["work", "spec_requests", id])

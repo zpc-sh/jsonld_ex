@@ -1,5 +1,34 @@
 defmodule JsonldEx.Native do
-  use Rustler, otp_app: :jsonld_ex, crate: "jsonld_nif"
+  @version Mix.Project.config()[:version]
+  @nif_features (
+    case System.get_env("JSONLD_NIF_FEATURES") do
+      nil -> ["ssi_urdna2015"]
+      "" -> []
+      "none" -> []
+      f -> String.split(f, ",", trim: true)
+    end
+  )
+
+  # Prefer precompiled NIFs from GitHub releases; fall back to local build if
+  # download is unavailable or JSONLD_NIF_FORCE_BUILD is set.
+  use RustlerPrecompiled,
+    otp_app: :jsonld_ex,
+    crate: "jsonld_nif",
+    version: @version,
+    base_url: "https://github.com/nocsi/jsonld/releases/download/v#{@version}",
+    force_build: System.get_env("JSONLD_NIF_FORCE_BUILD") in ["1", "true"],
+    features: @nif_features,
+    targets: [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin"
+    ],
+    nif_versions: [
+      "2.16",
+      "2.15",
+      "2.14"
+    ]
 
   def expand(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def expand_binary(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)

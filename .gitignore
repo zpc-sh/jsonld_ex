@@ -38,3 +38,7 @@ native/**/*.rlib
 native/**/*.dylib
 native/**/*.dll
 native/**/*.bc
+
+deps
+
+AGENTS.*

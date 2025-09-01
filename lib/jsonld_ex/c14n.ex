@@ -20,17 +20,26 @@ defmodule JsonldEx.C14n do
   def c14n(term, opts \\ []) do
     :telemetry.execute([:jsonld, :canonicalize, :start], %{}, %{opts: opts})
     alg = Keyword.get(opts, :algorithm, :urdna2015)
-
-    case Perf.normalize_rdf_graph(term, alg, opts) do
-      {:ok, nquads} when is_binary(nquads) ->
-        :telemetry.execute([:jsonld, :canonicalize, :stop], %{}, %{algorithm: alg, bytes: byte_size(nquads)})
-        {:ok, %{nquads: nquads, bnode_map: %{}}}
-      {:error, reason} ->
-        :telemetry.execute([:jsonld, :canonicalize, :error], %{}, %{reason: reason})
-        {:error, :canonicalization_failed}
-      other ->
-        :telemetry.execute([:jsonld, :canonicalize, :error], %{}, %{reason: other})
-        {:error, :canonicalization_failed}
+    provider = provider()
+    key = {:c14n, provider, alg, stable_key(term)}
+    with {:miss, nil} <- {:miss, cache_get(key)},
+         result <- Perf.normalize_rdf_graph(term, alg, opts) do
+      case result do
+        {:ok, nquads} when is_binary(nquads) ->
+          cache_put(key, nquads)
+          :telemetry.execute([:jsonld, :canonicalize, :stop], %{}, %{algorithm: alg, provider: provider, bytes: byte_size(nquads)})
+          {:ok, %{nquads: nquads, bnode_map: %{}}}
+        {:error, reason} ->
+          :telemetry.execute([:jsonld, :canonicalize, :error], %{}, %{provider: provider, reason: reason})
+          {:error, :canonicalization_failed}
+        other ->
+          :telemetry.execute([:jsonld, :canonicalize, :error], %{}, %{provider: provider, reason: other})
+          {:error, :canonicalization_failed}
+      end
+    else
+      {:miss, cached} when is_binary(cached) ->
+        :telemetry.execute([:jsonld, :canonicalize, :stop], %{}, %{algorithm: alg, provider: provider, bytes: byte_size(cached), cache: :hit})
+        {:ok, %{nquads: cached, bnode_map: %{}}}
     end
   end
 
@@ -43,7 +52,7 @@ defmodule JsonldEx.C14n do
   """
   def hash(term, opts \\ []) do
     :telemetry.execute([:jsonld, :hash, :start], %{}, %{opts: opts})
-    form = Keyword.get(opts, :form, :urdna2015_nquads)
+    form = Keyword.get(opts, :form, :stable_json)
     data =
       case form do
         :urdna2015_nquads ->
@@ -78,6 +87,10 @@ defmodule JsonldEx.C14n do
     encode_sorted(value)
   end
 
+  defp stable_key(term) do
+    :crypto.hash(:sha256, canonical_json(term)) |> Base.encode16(case: :lower)
+  end
+
   defp encode_sorted(map) when is_map(map) do
     # Encode maps with sorted keys, recursively
     keys = map |> Map.keys() |> Enum.map(&to_string/1) |> Enum.sort()
@@ -107,5 +120,43 @@ defmodule JsonldEx.C14n do
 
   defp escape(s), do: s |> String.replace("\"", "\\\"")
   defp count_lines(bin) when is_binary(bin), do: bin |> String.split("\n") |> Enum.reject(&(&1 == "")) |> length()
-end
 
+  # Provider selection: ENV takes precedence, then application env, then :none.
+  defp provider do
+    case System.get_env("JSONLD_CANON_PROVIDER") do
+      nil ->
+        # If not explicitly set, infer from NIF features: prefer :ssi when requested
+        inferred =
+          case System.get_env("JSONLD_NIF_FEATURES") do
+            nil -> :none
+            "" -> :none
+            feats -> if String.contains?(feats, "ssi_urdna2015"), do: :ssi, else: :none
+          end
+        Application.get_env(:jsonld_ex, :canon_provider, inferred)
+      s -> String.to_atom(String.downcase(s))
+    end
+  rescue
+    _ -> :none
+  end
+
+  # Simple ETS-backed cache
+  @table :jsonld_c14n_cache
+  defp ensure_table do
+    case :ets.whereis(@table) do
+      :undefined -> :ets.new(@table, [:set, :public, :named_table, {:read_concurrency, true}])
+      _ -> @table
+    end
+  end
+  defp cache_get(key) do
+    ensure_table()
+    case :ets.lookup(@table, key) do
+      [{^key, val}] -> val
+      _ -> nil
+    end
+  end
+  defp cache_put(key, val) do
+    ensure_table()
+    :ets.insert(@table, {key, val})
+    :ok
+  end
+end

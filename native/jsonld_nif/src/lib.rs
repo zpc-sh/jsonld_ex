@@ -17,6 +17,7 @@ use lru::LruCache;
 use std::sync::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+mod ssi_urdna;
 
 mod atoms {
     rustler::atoms! {
@@ -3153,7 +3154,24 @@ fn text_diff_myers<'a>(env: Env<'a>, old_text: String, new_text: String) -> NifR
 
 #[rustler::nif]
 fn normalize_rdf_graph<'a>(env: Env<'a>, document: String, algorithm: String) -> NifResult<Term<'a>> {
-    // Simplified RDF normalization
+    // If URDNA2015 requested and ssi feature is available, prefer that path.
+    if algorithm.to_lowercase() == "urdna2015" {
+        // Convert to a simple N-Quads form (placeholder) then canonicalize via ssi when enabled.
+        match serde_json::from_str::<Value>(&document) {
+            Ok(doc) => {
+                let nquads = convert_to_rdf_simple(doc);
+                match ssi_urdna::ssi_urdna::canonicalize_nquads(&nquads) {
+                    Ok(canon) => return Ok((atoms::ok(), canon).encode(env)),
+                    Err(_e) => {
+                        // Fall back to simple normalization below.
+                    }
+                }
+            }
+            Err(e) => return Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
+    }
+
+    // Fallback simplified normalization (pretty JSON string with header)
     match serde_json::from_str::<Value>(&document) {
         Ok(doc) => {
             let normalized = normalize_document_simple(&doc, &algorithm);

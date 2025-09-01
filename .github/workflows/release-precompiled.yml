@@ -1,0 +1,428 @@
+name: build-precompiled-nifs
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config zstd
+      - name: Build NIF
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-unknown-linux-gnu
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config zstd
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc-ar" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Build NIF
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-x86_64:
+    runs-on: macos-12
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-apple-darwin
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build NIF
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-aarch64:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-apple-darwin
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build NIF
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+
+
+  linux-x86_64-ssi:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config zstd
+      - name: Build NIF with features
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64-ssi:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-unknown-linux-gnu
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config zstd
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc-ar" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Build NIF with features
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-x86_64-ssi:
+    runs-on: macos-12
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-apple-darwin
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build NIF with features
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-aarch64-ssi:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-apple-darwin
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build NIF with features
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=jsonld_nif-v${VERSION}-${TARGET}-nif-${NIF_VERSION}-features-${FEATURES}.zst
+          zstd -19 -f -o "$OUT" "$SRC"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  aggregate-checksums:
+    runs-on: ubuntu-latest
+    needs:
+      - linux-x86_64
+      - linux-aarch64
+      - macos-x86_64
+      - macos-aarch64
+      - linux-x86_64-ssi
+      - linux-aarch64-ssi
+      - macos-x86_64-ssi
+      - macos-aarch64-ssi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Aggregate checksums
+        run: |
+          find artifacts -type f -name '*.sha256' -exec cat {} + > checksums.txt
+          ls -l checksums.txt
+      - name: Upload aggregate checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          files: checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
