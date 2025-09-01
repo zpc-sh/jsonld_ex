@@ -343,7 +343,7 @@ defmodule Mix.Tasks.Spec.Apply do
 
   defp write_temp_and_prepare_diff(info) do
     before = info[:before]
-    after = info[:after]
+    after_content = info[:after]
     id = info[:id]
     file = info[:file]
     base_dir = Path.join([File.cwd!(), "work", ".tmp", id])
@@ -351,7 +351,7 @@ defmodule Mix.Tasks.Spec.Apply do
     before_path = Path.join(base_dir, Path.basename(file) <> ".before.json")
     after_path = Path.join(base_dir, Path.basename(file) <> ".after.json")
     File.write!(before_path, before)
-    File.write!(after_path, after)
+    File.write!(after_path, after_content)
     {out, _} = System.cmd("git", ["--no-pager", "diff", "--no-index", "--no-color", before_path, after_path], stderr_to_stdout: true)
     {before_path, after_path, out}
   end
