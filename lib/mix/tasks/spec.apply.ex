@@ -341,7 +341,11 @@ defmodule Mix.Tasks.Spec.Apply do
   defp type_tag(nil), do: :null
   defp type_tag(_), do: :other
 
-  defp write_temp_and_prepare_diff(%{before: before, after: after, id: id, file: file} = _info) do
+  defp write_temp_and_prepare_diff(info) do
+    before = info[:before]
+    after = info[:after]
+    id = info[:id]
+    file = info[:file]
     base_dir = Path.join([File.cwd!(), "work", ".tmp", id])
     File.mkdir_p!(base_dir)
     before_path = Path.join(base_dir, Path.basename(file) <> ".before.json")
