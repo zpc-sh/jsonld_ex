@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Spec.Apply do
   @shortdoc "Apply proposal patch.json attachments from messages to target files"
   @moduledoc """
   Usage:
-    mix spec.apply --id <request_id> [--source inbox|outbox] [--target /path/to/target/repo] [--dry-run] [--force] [--diff]
+    mix spec.apply --id <request_id> [--source inbox|outbox] [--target /path/to/target/repo] [--dry-run] [--force] [--diff] [--baseline-rev <git_rev>] [--summary-json]
 
   Scans messages of type "proposal" under the chosen source (default: inbox),
   finds attachments named `patch.json`, and applies JSON Pointer operations
@@ -23,13 +23,24 @@ defmodule Mix.Tasks.Spec.Apply do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, source: :string, target: :string, dry_run: :boolean, force: :boolean, diff: :boolean])
+    {opts, _, _} = OptionParser.parse(argv, switches: [
+      id: :string,
+      source: :string,
+      target: :string,
+      dry_run: :boolean,
+      force: :boolean,
+      diff: :boolean,
+      baseline_rev: :string,
+      summary_json: :boolean
+    ])
     id = req!(opts, :id)
     source = Keyword.get(opts, :source, "inbox")
     target_root = Keyword.get(opts, :target, File.cwd!())
     dry_run = Keyword.get(opts, :dry_run, false)
     force = Keyword.get(opts, :force, false)
     show_diff = Keyword.get(opts, :diff, false)
+    baseline_rev_opt = Keyword.get(opts, :baseline_rev, nil)
+    summary_json? = Keyword.get(opts, :summary_json, false)
 
     req_root = Path.join(["work", "spec_requests", id])
     src_dir = Path.join(req_root, source)
@@ -39,30 +50,46 @@ defmodule Mix.Tasks.Spec.Apply do
     |> Enum.map(&{&1, Jason.decode!(File.read!(&1))})
     |> Enum.filter(fn {_p, m} -> m["type"] == "proposal" end)
 
-    if messages == [] do
-      Mix.shell().info("No proposal messages found in #{src_dir}")
-      :ok
-    else
-      Enum.each(messages, fn {msg_path, msg} ->
-        (msg["attachments"] || [])
-        |> Enum.filter(&String.ends_with?(&1, "patch.json"))
-        |> Enum.each(fn rel ->
-          patch_path = Path.join(req_root, rel)
-          result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id)
-          case result do
-            {:ok, info} when dry_run ->
-              Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok})")
-              if show_diff, do: print_diff_preview(info)
-            {:ok, info} ->
-              Mix.shell().info("Applied #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}) from #{rel} (msg #{Path.basename(msg_path)})")
-              if show_diff, do: print_diff_preview(info)
-          end
+    results =
+      if messages == [] do
+        Mix.shell().info("No proposal messages found in #{src_dir}")
+        []
+      else
+        Enum.reduce(messages, [], fn {msg_path, msg}, acc ->
+          (msg["attachments"] || [])
+          |> Enum.filter(&String.ends_with?(&1, "patch.json"))
+          |> Enum.reduce(acc, fn rel, acc2 ->
+            patch_path = Path.join(req_root, rel)
+            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt)
+            info = case result do
+              {:ok, info} when dry_run ->
+                Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}, baseline_git_ok=#{info.baseline_git_ok})")
+                if show_diff, do: print_diff_preview(info)
+                info
+              {:ok, info} ->
+                Mix.shell().info("Applied #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}, baseline_git_ok=#{info.baseline_git_ok}) from #{rel} (msg #{Path.basename(msg_path)})")
+                if show_diff, do: print_diff_preview(info)
+                info
+            end
+            acc2 ++ [Map.merge(info, %{message: Path.basename(msg_path), patch: rel, dry_run: dry_run})]
+          end)
         end)
-      end)
+      end
+
+    if summary_json? do
+      summary = %{
+        id: id,
+        source: source,
+        target_root: target_root,
+        results: results
+      }
+      Mix.shell().info(Jason.encode!(summary, pretty: true))
     end
+
+    :ok
   end
 
-  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id) do
+  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt) do
     patch = Jason.decode!(File.read!(patch_path))
     file_rel = patch["file"] || get_in(msg, ["ref", "path"]) || Mix.raise("Patch missing file and message.ref.path")
     base_ptr = patch["base_pointer"] || get_in(msg, ["ref", "json_pointer"]) || ""
@@ -81,20 +108,38 @@ defmodule Mix.Tasks.Spec.Apply do
         {hex256, _} -> compare_hash(:sha256, content, hex256)
       end
 
-    if not baseline_ok and not force do
-      Mix.raise("Baseline mismatch for #{file_rel}. Use --force to override.")
+    # Optional git-based baseline comparison
+    baseline_rev = patch["baseline_git_rev"] || baseline_rev_opt
+    baseline_git_ok =
+      case baseline_rev do
+        nil -> true
+        rev when is_binary(rev) ->
+          case git_show_file(target_root, rev, file_rel) do
+            {:ok, baseline_content} -> baseline_content == content
+            {:error, _} -> false
+          end
+      end
+
+    if (not baseline_ok or not baseline_git_ok) and not force do
+      Mix.raise("Baseline mismatch for #{file_rel} (hash_ok=#{baseline_ok}, git_ok=#{baseline_git_ok}). Use --force to override.")
     end
 
     {final, applied_paths} =
       Enum.reduce(ops, {json, []}, fn op, {acc, paths} ->
         ptr = normalize_ptr(base_ptr, Map.fetch!(op, "path"))
+        # Existence checks for replace/remove
+        case op["op"] do
+          "replace" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for replace: #{ptr}")
+          "remove" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for remove: #{ptr}")
+          _ -> :ok
+        end
         {apply_op!(acc, base_ptr, op), paths ++ [ptr]}
       end)
 
     before_pretty = Jason.encode!(json, pretty: true)
     after_pretty = Jason.encode!(final, pretty: true)
 
-    info = %{file: file_rel, baseline_ok: baseline_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
+    info = %{file: file_rel, baseline_ok: baseline_ok, baseline_git_ok: baseline_git_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
 
     if dry_run do
       if show_diff, do: _ = write_temp_and_prepare_diff(info)
@@ -206,6 +251,40 @@ defmodule Mix.Tasks.Spec.Apply do
       _ -> false
     end
   end
+
+  defp git_show_file(dir, rev, rel_path) do
+    if File.dir?(Path.join(dir, ".git")) do
+      {out, status} = System.cmd("git", ["-C", dir, "show", rev <> ":" <> rel_path], stderr_to_stdout: true)
+      if status == 0, do: {:ok, out}, else: {:error, {:git_error, out}}
+    else
+      {:error, :not_git_repo}
+    end
+  end
+
+  defp pointer_exists?(doc, path) when is_binary(path) do
+    tokens = pointer_tokens(path)
+    case get_in_pointer(doc, tokens) do
+      {:ok, _v} -> true
+      :error -> false
+    end
+  end
+
+  defp get_in_pointer(doc, []), do: {:ok, doc}
+  defp get_in_pointer(doc, [{:key, k} | rest]) when is_map(doc) do
+    case Map.fetch(doc, k) do
+      {:ok, v} -> get_in_pointer(v, rest)
+      :error -> :error
+    end
+  end
+  defp get_in_pointer(list, [{:idx, i} | rest]) when is_list(list) do
+    if i < length(list) do
+      v = Enum.at(list, i)
+      get_in_pointer(v, rest)
+    else
+      :error
+    end
+  end
+  defp get_in_pointer(_other, _rest), do: :error
 
   defp write_temp_and_prepare_diff(%{before: before, after: after, id: id, file: file} = _info) do
     base_dir = Path.join([File.cwd!(), "work", ".tmp", id])
