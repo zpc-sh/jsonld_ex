@@ -3,7 +3,12 @@ defmodule Mix.Tasks.Spec.Apply do
   @shortdoc "Apply proposal patch.json attachments from messages to target files"
   @moduledoc """
   Usage:
-    mix spec.apply --id <request_id> [--source inbox|outbox] [--target /path/to/target/repo] [--dry-run] [--force] [--diff] [--baseline-rev <git_rev>] [--summary-json]
+    mix spec.apply --id <request_id> \
+      [--source inbox|outbox] \
+      [--target /path/to/target/repo] \
+      [--dry-run] [--force] [--diff] \
+      [--baseline-rev <git_rev>] [--summary-json] \
+      [--replace-create]
 
   Scans messages of type "proposal" under the chosen source (default: inbox),
   finds attachments named `patch.json`, and applies JSON Pointer operations
@@ -31,7 +36,8 @@ defmodule Mix.Tasks.Spec.Apply do
       force: :boolean,
       diff: :boolean,
       baseline_rev: :string,
-      summary_json: :boolean
+      summary_json: :boolean,
+      replace_create: :boolean
     ])
     id = req!(opts, :id)
     source = Keyword.get(opts, :source, "inbox")
@@ -41,6 +47,7 @@ defmodule Mix.Tasks.Spec.Apply do
     show_diff = Keyword.get(opts, :diff, false)
     baseline_rev_opt = Keyword.get(opts, :baseline_rev, nil)
     summary_json? = Keyword.get(opts, :summary_json, false)
+    replace_create? = Keyword.get(opts, :replace_create, false)
 
     req_root = Path.join(["work", "spec_requests", id])
     src_dir = Path.join(req_root, source)
@@ -60,7 +67,7 @@ defmodule Mix.Tasks.Spec.Apply do
           |> Enum.filter(&String.ends_with?(&1, "patch.json"))
           |> Enum.reduce(acc, fn rel, acc2 ->
             patch_path = Path.join(req_root, rel)
-            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt)
+            result = apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?)
             info = case result do
               {:ok, info} when dry_run ->
                 Mix.shell().info("[DRY-RUN] Would apply #{length(info.paths)} ops to #{info.file} (baseline_ok=#{info.baseline_ok}, baseline_git_ok=#{info.baseline_git_ok})")
@@ -89,7 +96,7 @@ defmodule Mix.Tasks.Spec.Apply do
     :ok
   end
 
-  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt) do
+  defp apply_patch!(patch_path, msg, target_root, dry_run, force, show_diff, id, baseline_rev_opt, replace_create?) do
     patch = Jason.decode!(File.read!(patch_path))
     file_rel = patch["file"] || get_in(msg, ["ref", "path"]) || Mix.raise("Patch missing file and message.ref.path")
     base_ptr = patch["base_pointer"] || get_in(msg, ["ref", "json_pointer"]) || ""
@@ -120,8 +127,20 @@ defmodule Mix.Tasks.Spec.Apply do
           end
       end
 
-    if (not baseline_ok or not baseline_git_ok) and not force do
-      Mix.raise("Baseline mismatch for #{file_rel} (hash_ok=#{baseline_ok}, git_ok=#{baseline_git_ok}). Use --force to override.")
+    # Also compute hash comparison against the git baseline (detect any content change)
+    baseline_git_hash_ok =
+      case baseline_rev do
+        nil -> true
+        rev when is_binary(rev) ->
+          case git_show_file(target_root, rev, file_rel) do
+            {:ok, baseline_content} ->
+              compare_hash(:sha256, baseline_content, :crypto.hash(:sha256, content) |> Base.encode16(case: :lower))
+            {:error, _} -> false
+          end
+      end
+
+    if (not baseline_ok or not baseline_git_ok or not baseline_git_hash_ok) and not force do
+      Mix.raise("Baseline mismatch for #{file_rel} (hash_ok=#{baseline_ok}, git_eq=#{baseline_git_ok}, git_hash=#{baseline_git_hash_ok}). Use --force to override.")
     end
 
     {final, applied_paths} =
@@ -129,25 +148,41 @@ defmodule Mix.Tasks.Spec.Apply do
         ptr = normalize_ptr(base_ptr, Map.fetch!(op, "path"))
         # Existence checks for replace/remove
         case op["op"] do
-          "replace" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for replace: #{ptr}")
+          "replace" ->
+            cond do
+              pointer_exists?(acc, ptr) -> :ok
+              replace_create? -> :ok
+              true -> Mix.raise("Pointer not found for replace: #{ptr}")
+            end
           "remove" -> if not pointer_exists?(acc, ptr), do: Mix.raise("Pointer not found for remove: #{ptr}")
           _ -> :ok
         end
-        {apply_op!(acc, base_ptr, op), paths ++ [ptr]}
+        # If replace and path missing but replace_create? is true, treat it as add
+        effective_op =
+          if op["op"] == "replace" and not pointer_exists?(acc, ptr) and replace_create?, do: Map.put(op, "op", "add"), else: op
+        {apply_op!(acc, base_ptr, effective_op), paths ++ [ptr]}
       end)
 
     before_pretty = Jason.encode!(json, pretty: true)
     after_pretty = Jason.encode!(final, pretty: true)
 
-    info = %{file: file_rel, baseline_ok: baseline_ok, baseline_git_ok: baseline_git_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
+    info = %{file: file_rel, baseline_ok: baseline_ok, baseline_git_ok: baseline_git_ok, baseline_git_hash_ok: baseline_git_hash_ok, paths: applied_paths, before: before_pretty, after: after_pretty, id: id}
 
     if dry_run do
-      if show_diff, do: _ = write_temp_and_prepare_diff(info)
-      {:ok, info}
+      if show_diff do
+        {before_path, after_path, out} = write_temp_and_prepare_diff(info)
+        {:ok, Map.merge(info, %{diff_before: before_path, diff_after: after_path, diff: out})}
+      else
+        {:ok, info}
+      end
     else
       File.write!(target_path, after_pretty)
-      if show_diff, do: _ = write_temp_and_prepare_diff(info)
-      {:ok, info}
+      if show_diff do
+        {before_path, after_path, out} = write_temp_and_prepare_diff(info)
+        {:ok, Map.merge(info, %{diff_before: before_path, diff_after: after_path, diff: out})}
+      else
+        {:ok, info}
+      end
     end
   end
 
