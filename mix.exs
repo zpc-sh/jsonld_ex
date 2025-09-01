@@ -64,7 +64,6 @@ defmodule JsonldEx.MixProject do
           [
             "native/jsonld_nif/src",
             "native/jsonld_nif/Cargo.toml",
-            "native/jsonld_nif/Cargo.lock",
             "native/jsonld_nif/README.md",
             "native/jsonld_nif/.gitignore",
             "native/jsonld_nif/.cargo"
