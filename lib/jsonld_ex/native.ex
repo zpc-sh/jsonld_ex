@@ -11,24 +11,33 @@ defmodule JsonldEx.Native do
 
   # Prefer precompiled NIFs from GitHub releases; fall back to local build if
   # download is unavailable or JSONLD_NIF_FORCE_BUILD is set.
-  use RustlerPrecompiled,
-    otp_app: :jsonld_ex,
-    crate: "jsonld_nif",
-    version: @version,
-    base_url: "https://github.com/nocsi/jsonld/releases/download/v#{@version}",
-    force_build: System.get_env("JSONLD_NIF_FORCE_BUILD") in ["1", "true"],
-    features: @nif_features,
-    targets: [
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin"
-    ],
-    nif_versions: [
-      "2.16",
-      "2.15",
-      "2.14"
-    ]
+  # Skip NIF integration when building documentation (MIX_ENV=docs) to avoid
+  # attempting downloads/compilation during hexdocs publishing.
+  if Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0) and Mix.env() == :docs do
+    @doc false
+    def __skip_nif_loading_for_docs__, do: :ok
+  else
+    use RustlerPrecompiled,
+      otp_app: :jsonld_ex,
+      crate: "jsonld_nif",
+      version: @version,
+      base_url: "https://github.com/nocsi/jsonld/releases/download/v#{@version}",
+      force_build: System.get_env("JSONLD_NIF_FORCE_BUILD") in ["1", "true"],
+      features: @nif_features,
+      targets: [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin"
+      ],
+      nif_versions: [
+        "2.16",
+        "2.15",
+        "2.14"
+      ]
+  end
 
   def expand(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def expand_binary(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)

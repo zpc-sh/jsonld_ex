@@ -1,8 +1,16 @@
 name: build-precompiled-nifs
 
 on:
+  # Build artifacts whenever a GitHub Release is published
   release:
     types: [published]
+  # Also support tag pushes like `v0.4.2` so precompiles exist before Hex publish
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IS_PRERELEASE: ${{ contains(github.ref_name, '-') }}
 
 jobs:
   linux-x86_64:
@@ -30,10 +38,10 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -45,6 +53,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -83,10 +92,10 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -98,6 +107,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -131,11 +141,11 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -147,6 +157,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -180,11 +191,11 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -196,6 +207,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -234,10 +246,10 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -249,6 +261,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -288,10 +301,10 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -303,6 +316,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -337,11 +351,11 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -353,6 +367,7 @@ jobs:
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -387,13 +402,222 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF_NAME#v}
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so-features-${FEATURES}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+
+  linux-x86_64-musl:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Build NIF (musl)
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact (tar.gz)
+        run: |
+          set -euxo pipefail
+          VERSION=${GITHUB_REF_NAME#v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-x86_64-musl-ssi:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Build NIF (musl + features)
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact (tar.gz)
+        run: |
+          set -euxo pipefail
+          VERSION=${GITHUB_REF_NAME#v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64-musl:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-unknown-linux-musl
+      NIF_VERSION: ${{ matrix.nif }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl toolchain (cross)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Build NIF (musl aarch64)
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET
+      - name: Package artifact (tar.gz)
+        run: |
+          set -euxo pipefail
+          VERSION=${GITHUB_REF_NAME#v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+          prerelease: ${{ env.IS_PRERELEASE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64-musl-ssi:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nif: ["2.16", "2.15", "2.14"]
+    env:
+      TARGET: aarch64-unknown-linux-musl
+      NIF_VERSION: ${{ matrix.nif }}
+      FEATURES: ssi_urdna2015
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl toolchain (cross)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Build NIF (musl aarch64 + features)
+        run: |
+          cd native/jsonld_nif
+          cargo build --release --target $TARGET --features $FEATURES
+      - name: Package artifact (tar.gz)
+        run: |
+          set -euxo pipefail
+          VERSION=${GITHUB_REF_NAME#v}
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: SHA256
+        run: |
+          sha256sum "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
       - name: SHA256
         run: |
           shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
@@ -420,6 +644,10 @@ jobs:
       - linux-aarch64
       - macos-x86_64
       - macos-aarch64
+      - linux-x86_64-musl
+      - linux-aarch64-musl
+      - linux-x86_64-musl-ssi
+      - linux-aarch64-musl-ssi
       - linux-x86_64-ssi
       - linux-aarch64-ssi
       - macos-x86_64-ssi
@@ -436,5 +664,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: checksums.txt
+          prerelease: ${{ env.IS_PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

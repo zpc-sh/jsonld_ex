@@ -2,6 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/jsonld_ex.svg)](https://hex.pm/packages/jsonld_ex)
 [![Documentation](https://img.shields.io/badge/documentation-hexdocs-blue.svg)](https://hexdocs.pm/jsonld_ex)
+[![Docs Workflow](https://github.com/nocsi/jsonld/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/publish-docs.yml)
 [![License](https://img.shields.io/hexpm/l/jsonld_ex.svg)](https://github.com/nocsi/jsonld/blob/main/LICENSE)
 [![CI](https://github.com/nocsi/jsonld/actions/workflows/ci.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/ci.yml)
 [![Release (precompiled NIFs)](https://github.com/nocsi/jsonld/actions/workflows/release-precompiled.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/release-precompiled.yml)
@@ -9,6 +10,11 @@
 🚀 **36x faster** than pure Elixir JSON-LD implementations
 
 High-performance JSON-LD processing library for Elixir with Rust NIF backend.
+
+## Documentation
+
+- HexDocs: https://hexdocs.pm/jsonld_ex
+- Changelog: ./CHANGELOG.md
 
 Quick API
 - Canonicalize: `JSONLD.c14n(term, algorithm: :urdna2015)` → `{:ok, %{nquads: string, bnode_map: map}}`
@@ -133,8 +139,10 @@ context_string = Jason.encode!(context)
 
 ### Precompiled NIFs (rustler_precompiled)
 - This library uses `rustler_precompiled` to download precompiled NIFs from GitHub releases matching the library version.
-- Targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`.
+- Targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`.
 - If a precompiled artifact is not available, it falls back to local build.
+- Default features: none. The `ssi_urdna2015` feature is opt-in and only used when explicitly enabled (see env toggles below). Artifact selection matches the chosen feature set.
+  - Feature variants append `-features-<features>` to the tarball name, e.g. `-features-ssi_urdna2015`.
 - Env toggles:
   - `JSONLD_NIF_FORCE_BUILD=1` forces building from source (skips download).
   - `JSONLD_NIF_FEATURES=ssi_urdna2015` enables optional Cargo features (e.g., ssi integration) for local builds.
@@ -147,12 +155,28 @@ context_string = Jason.encode!(context)
   `build-precompiled-nifs` workflow to build and upload assets for all
   supported targets and NIF versions.
 - Verify uploaded assets follow the expected naming, for example:
-  - `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin.so.tar.gz`
-  - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-gnu.so.tar.gz`
+  - `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin.tar.gz`
+  - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-gnu.tar.gz`
+  - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-musl.tar.gz`
+  - feature variant example: `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-musl-features-ssi_urdna2015.tar.gz`
+  - macOS feature example: `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin-features-ssi_urdna2015.tar.gz`
   - corresponding `.sha256` files and aggregated `checksums.txt`.
 - After assets are present, publish the Hex package:
   - `mix hex.build`
   - `mix hex.publish`
+
+Prerelase workflow (dry run)
+- To validate the pipeline without publishing to Hex, create a prerelease tag:
+  - Example: `v<version>-rc1` (any hyphen in `ref_name` is treated as prerelease).
+- The release workflow marks artifacts as `prerelease` automatically and uploads all tarballs and `checksums.txt`.
+- The docs workflow is gated to non-prerelease tags, so HexDocs are not published for `-rc` tags.
+
+RC tag validation checklist
+- Confirm a prerelease exists on GitHub for your tag, with all target matrices present (gnu, musl; macOS/Linux; base and `ssi_urdna2015`).
+- Spot check a few tarballs:
+  - Filenames match `libjsonld_nif-v<version>-nif-<nif>-<target>[ -features-<features>].tar.gz`.
+  - `.sha256` files exist and `checksums.txt` includes every artifact.
+- Test install from a sample project by pinning the prerelease version and ensuring `rustler_precompiled` downloads the correct artifact (or falls back when forced).
 
 If assets are temporarily missing or you need to build locally, either:
 - Set `JSONLD_NIF_FORCE_BUILD=1` when compiling, or

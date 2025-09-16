@@ -1,0 +1,28 @@
+name: publish-docs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  docs:
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: docs
+      JSONLD_NIF_FEATURES: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27.1'
+          elixir-version: '1.17.3'
+      - name: Deps
+        run: mix deps.get
+      - name: Build docs
+        run: mix docs
+      - name: Publish to HexDocs
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.docs
