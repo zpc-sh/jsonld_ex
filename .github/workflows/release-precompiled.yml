@@ -44,7 +44,7 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -103,7 +103,7 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
@@ -156,7 +156,7 @@ jobs:
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.tar.gz
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
           tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
       - name: SHA256
