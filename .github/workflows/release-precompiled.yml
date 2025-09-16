@@ -1,19 +1,16 @@
 name: build-precompiled-nifs
 
 on:
-  # Build artifacts whenever a GitHub Release is published
+  # Build artifacts when a GitHub Release is published
   release:
     types: [published]
-  # Also support tag pushes like `v0.4.2` so precompiles exist before Hex publish
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
 
 env:
-  IS_PRERELEASE: ${{ contains(github.ref_name, '-') }}
+  # Use the release tag name for prerelease detection
+  IS_PRERELEASE: ${{ contains(github.event.release.tag_name, '-') }}
 
 jobs:
   linux-x86_64:
@@ -53,7 +50,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -112,7 +109,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -165,7 +162,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -711,7 +708,7 @@ jobs:
       - name: Upload aggregate checksums
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: checksums.txt
           prerelease: ${{ env.IS_PRERELEASE }}
           overwrite: true
