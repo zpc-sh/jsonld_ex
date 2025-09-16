@@ -4,13 +4,27 @@ on:
   # Build artifacts when a GitHub Release is published
   release:
     types: [published]
+  # Manual trigger for re-runs or dry runs
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to attach assets (e.g., v0.4.2)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as prerelease (when manually dispatched)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 env:
-  # Use the release tag name for prerelease detection
-  IS_PRERELEASE: ${{ contains(github.event.release.tag_name, '-') }}
+  # Tag to attach assets to, from release event or manual input
+  TAG_NAME: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag_name }}
+  # Determine prerelease flag: from release tag name, or manual input
+  IS_PRERELEASE: ${{ github.event_name == 'release' && contains(github.event.release.tag_name, '-') || inputs.prerelease }}
 
 jobs:
   linux-x86_64:
@@ -38,7 +52,7 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${TAG_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
           OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
@@ -50,7 +64,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.TAG_NAME }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -97,7 +111,7 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${TAG_NAME#v}
           LIB=libjsonld_nif.so
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
           OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
@@ -109,7 +123,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.TAG_NAME }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -149,7 +163,7 @@ jobs:
       - name: Package artifact (tar.gz)
         run: |
           set -euxo pipefail
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${TAG_NAME#v}
           # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
           LIB=libjsonld_nif.dylib
           SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
@@ -162,7 +176,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.TAG_NAME }}
           files: |
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
@@ -708,7 +722,7 @@ jobs:
       - name: Upload aggregate checksums
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.TAG_NAME }}
           files: checksums.txt
           prerelease: ${{ env.IS_PRERELEASE }}
           overwrite: true
