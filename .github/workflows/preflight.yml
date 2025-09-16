@@ -1,0 +1,290 @@
+name: preflight-precompiled-nifs
+
+on:
+  workflow_dispatch:
+    inputs:
+      features:
+        description: "Cargo features (e.g., ssi_urdna2015)"
+        required: false
+        default: ""
+      nif_version:
+        description: "Erlang NIF version label (for packaging only)"
+        required: true
+        default: "2.16"
+
+env:
+  FEATURES: ${{ inputs.features }}
+  NIF_VERSION: ${{ inputs.nif_version }}
+
+jobs:
+  linux-x86_64-gnu:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config zstd
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "$OUT" > "$OUT.sha256"; else shasum -a 256 "$OUT" > "$OUT.sha256"; fi
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64-gnu:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config zstd
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc-ar" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "$OUT" > "$OUT.sha256"; else shasum -a 256 "$OUT" > "$OUT.sha256"; fi
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-x86_64-musl:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR
+        run: |
+          echo "CC_x86_64_unknown_linux_musl=zig cc -target x86_64-linux-musl" >> $GITHUB_ENV
+          echo "AR_x86_64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "$OUT" > "$OUT.sha256"; else shasum -a 256 "$OUT" > "$OUT.sha256"; fi
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  linux-aarch64-musl:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR
+        run: |
+          echo "CC_aarch64_unknown_linux_musl=zig cc -target aarch64-linux-musl" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.so
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "$OUT" > "$OUT.sha256"; else shasum -a 256 "$OUT" > "$OUT.sha256"; fi
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-x86_64:
+    runs-on: macos-12
+    env:
+      TARGET: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          shasum -a 256 "$OUT" > "$OUT.sha256"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
+  macos-aarch64:
+    runs-on: macos-14
+    env:
+      TARGET: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          override: true
+      - name: Build
+        run: |
+          cd native/jsonld_nif
+          if [ -n "${FEATURES}" ]; then
+            cargo build --release --target $TARGET --features "$FEATURES"
+          else
+            cargo build --release --target $TARGET
+          fi
+      - name: Package
+        run: |
+          set -euxo pipefail
+          VERSION=$(awk -F '"' '/version:/ {print $2; exit}' mix.exs)
+          LIB=libjsonld_nif.dylib
+          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
+          SUFFIX=""
+          if [ -n "${FEATURES}" ]; then SUFFIX="-features-${FEATURES}"; fi
+          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}${SUFFIX}.tar.gz
+          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
+          shasum -a 256 "$OUT" > "$OUT.sha256"
+          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
+
