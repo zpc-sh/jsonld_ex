@@ -195,6 +195,26 @@ Note: For local builds, ensure your Rust toolchain supports Cargo.lock v4
   default and ssi-enabled precompiled NIFs along with `.sha256` and an
   aggregate `checksums.txt`.
 
+### Local Preflight (Linux artifacts)
+- The preflight uses cross Docker images for both GNU and MUSL targets. Docker must be available (Colima is fine).
+  - Run base preflight: `make preflight`
+  - Run ssi variant: `make preflight-ssi`
+  - On first run, the script pulls images `ghcr.io/cross-rs/<target>:latest`, which can take a few minutes.
+- Outputs tarballs to `work/precompiled/` with the expected naming:
+  - `libjsonld_nif-v<version>-nif-<nif>-<target>.tar.gz`
+  - Feature variant: `...-features-ssi_urdna2015.tar.gz`
+- Fallback when Docker is not available:
+  - MUSL builds can use `cargo-zigbuild` with Zig (install `cargo-zigbuild` and `zig`). GNU builds are skipped.
+- macOS/Apple Silicon tip:
+  - Colima with Rosetta can run amd64 containers; the script defaults to `linux/amd64` images. You can override with `CROSS_IMAGE_PLATFORM`.
+- AArch64 host tip: To avoid x86_64 locally, skip it:
+  - `make preflight-aarch64` or `SKIP_X86_64=1 make preflight`
+  - `make preflight-ssi-aarch64` or `SKIP_X86_64=1 make preflight-ssi`
+
+Preflight environment overrides
+- `CROSS_IMAGE_PLATFORM`: Platform passed to `docker run` for cross images (default: `linux/amd64`).
+- `CROSS_IMAGE_TAG`: Tag to pull for `ghcr.io/cross-rs/<target>:<tag>` (tried first, then falls back to `latest`, then `main`).
+
 ## License
 
 MIT

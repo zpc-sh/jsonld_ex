@@ -47,12 +47,26 @@ build_with_cross() {
   [[ -n "$FEATURES" ]] && features_arg="--features $FEATURES"
 
   # Prefer running inside cross Docker images directly to avoid host toolchain installs
-  local image="ghcr.io/cross-rs/${target}:stable"
-  local platform=""
-  case "$target" in
-    x86_64-*) platform="--platform=linux/amd64" ;;
-    aarch64-*) platform="--platform=linux/arm64" ;;
-  esac
+  local image_base="ghcr.io/cross-rs/${target}"
+  local tags=()
+  if [[ -n "${CROSS_IMAGE_TAG:-}" ]]; then
+    tags+=("${CROSS_IMAGE_TAG}")
+  fi
+  tags+=(latest main)
+  local image=""
+  for tag in "${tags[@]}"; do
+    if docker pull ${platform:-} "${image_base}:${tag}" >/dev/null 2>&1; then
+      image="${image_base}:${tag}"
+      break
+    fi
+  done
+  if [[ -z "$image" ]]; then
+    echo "[preflight] Failed to find cross image for $target (tried: ${tags[*]}). Install cross and Docker, or run MUSL via zigbuild." >&2
+    exit 3
+  fi
+  # Default to amd64 images; override via CROSS_IMAGE_PLATFORM if needed.
+  local platform="--platform=${CROSS_IMAGE_PLATFORM:-linux/amd64}"
+  echo "[preflight] Using image: ${image} with ${platform}"
 
   docker run --rm $platform \
     -e CARGO_HOME=/cargo -e RUSTUP_HOME=/rustup \
@@ -109,18 +123,19 @@ package_artifact() {
 
 build_target() {
   local target=$1
-  if have cross; then
+  if docker_ready; then
     build_with_cross "$target"
   else
     if [[ "$target" == *musl* ]]; then
       if have cargo-zigbuild; then
         build_with_zig "$target"
       else
-        echo "For MUSL targets, install 'cross' (recommended) or 'cargo-zigbuild' + Zig" >&2
+        echo "[preflight] Docker not available; for MUSL targets install 'cargo-zigbuild' and Zig (or start Docker)." >&2
         exit 2
       fi
     else
-      build_with_cargo "$target"
+      echo "[preflight] Docker required for GNU target $target on this host. Please start Docker/Colima." >&2
+      exit 2
     fi
   fi
 }
