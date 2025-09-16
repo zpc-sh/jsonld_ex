@@ -57,6 +57,7 @@ jobs:
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
           prerelease: ${{ env.IS_PRERELEASE }}
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -111,6 +112,7 @@ jobs:
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
           prerelease: ${{ env.IS_PRERELEASE }}
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -162,6 +164,7 @@ jobs:
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
           prerelease: ${{ env.IS_PRERELEASE }}
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload workflow artifact
@@ -704,5 +707,6 @@ jobs:
         with:
           files: checksums.txt
           prerelease: ${{ env.IS_PRERELEASE }}
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
