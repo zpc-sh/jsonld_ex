@@ -140,6 +140,7 @@ context_string = Jason.encode!(context)
 ### Precompiled NIFs (rustler_precompiled)
 - This library uses `rustler_precompiled` to download precompiled NIFs from GitHub releases matching the library version.
 - Targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`.
+  - Note: Releases may temporarily publish a reduced subset (currently Linux gnu: x86_64, aarch64; macOS: aarch64) while we simplify the matrix. Missing targets will fall back to local build.
 - If a precompiled artifact is not available, it falls back to local build.
 - Default features: none. The `ssi_urdna2015` feature is opt-in and only used when explicitly enabled (see env toggles below). Artifact selection matches the chosen feature set.
   - Feature variants append `-features-<features>` to the tarball name, e.g. `-features-ssi_urdna2015`.
@@ -207,13 +208,22 @@ Note: For local builds, ensure your Rust toolchain supports Cargo.lock v4
   - MUSL builds can use `cargo-zigbuild` with Zig (install `cargo-zigbuild` and `zig`). GNU builds are skipped.
 - macOS/Apple Silicon tip:
   - Colima with Rosetta can run amd64 containers; the script defaults to `linux/amd64` images. You can override with `CROSS_IMAGE_PLATFORM`.
+  - The Makefile auto-sets `DOCKER_DEFAULT_PLATFORM=linux/amd64` on arm64/aarch64 hosts; override if needed.
 - AArch64 host tip: To avoid x86_64 locally, skip it:
   - `make preflight-aarch64` or `SKIP_X86_64=1 make preflight`
   - `make preflight-ssi-aarch64` or `SKIP_X86_64=1 make preflight-ssi`
   - The script auto-skips x86_64 by default on aarch64/arm64 hosts (override by setting `SKIP_X86_64=0`).
- - Subsets for faster iteration:
-   - GNU-only: `make preflight-gnu-only` or with ssi `make preflight-gnu-ssi`
-   - MUSL-only: `make preflight-musl-only` or with ssi `make preflight-musl-ssi`
+- Subsets for faster iteration:
+  - GNU-only: `make preflight-gnu-only` or with ssi `make preflight-gnu-ssi`
+  - MUSL-only: `make preflight-musl-only` or with ssi `make preflight-musl-ssi`
+ - Check images only (fail-fast, no build): `make preflight-check`
+
+Fail-fast checks
+- The preflight verifies that the appropriate `ghcr.io/cross-rs/<target>` image can be pulled for your platform
+  before invoking `cross`, to avoid falling back to host toolchains.
+- If the image can’t be pulled, it exits with a clear message. Use:
+  - `DOCKER_DEFAULT_PLATFORM=linux/amd64` (or `CROSS_IMAGE_PLATFORM=linux/amd64`) on Apple Silicon
+  - `CROSS_IMAGE_TAG` or `CROSS_IMAGE_TAG_<TARGET>` to pin a specific image tag
 
 Setup helper
 - Install cross and verify Docker in one step:

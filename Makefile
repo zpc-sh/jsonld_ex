@@ -3,9 +3,27 @@
 .PHONY: help clean dev prod test bench ci pgo install format lint docs release
 .PHONY: install-cross verify-docker
 .PHONY: install-zigbuild
+.PHONY: preflight-check
 
 # Default target
 .DEFAULT_GOAL := help
+
+# BUILD: Host detection and default env for Apple Silicon
+HOST_OS := $(shell uname -s)
+HOST_ARCH := $(shell uname -m)
+
+# On Apple Silicon/aarch64 hosts, default Docker to run amd64 images (Rosetta)
+ifeq ($(HOST_ARCH),arm64)
+export DOCKER_DEFAULT_PLATFORM ?= linux/amd64
+endif
+ifeq ($(HOST_ARCH),aarch64)
+export DOCKER_DEFAULT_PLATFORM ?= linux/amd64
+endif
+
+# Default cross to use Docker when present
+export CROSS_CONTAINER_ENGINE ?= docker
+# Keep cross image platform aligned with Docker default (can be overridden)
+export CROSS_IMAGE_PLATFORM ?= $(DOCKER_DEFAULT_PLATFORM)
 
 # BUILD: Colors for output
 BLUE := \033[0;34m
@@ -182,3 +200,7 @@ preflight-musl-only: ## Preflight MUSL targets only (skip GNU)
 preflight-musl-ssi: ## Preflight MUSL targets only with ssi feature
 	@echo "$(BLUE)[BUILD]$(NC) Running preflight for MUSL-only targets with ssi..."
 	SKIP_GNU=1 FEATURES=ssi_urdna2015 bash scripts/preflight.sh
+
+preflight-check: ## Verify cross Docker images exist for selected subset (no build)
+	@echo "$(BLUE)[BUILD]$(NC) Verifying cross images for GNU+MUSL targets..."
+	bash scripts/preflight_check.sh

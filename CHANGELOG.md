@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - Align precompiled NIF artifact names and format with `rustler_precompiled` expectations (tar.gz, name includes version, NIF version, and target), enabling successful runtime downloads.
 - Add clear Publishing Guide to README with release steps and local build fallbacks.
 - Default NIF features are now empty (no features) unless explicitly set via `JSONLD_NIF_FEATURES`; opt into `ssi_urdna2015` to use the ssi-backed URDNA2015 path.
+ - Skip NIF loading during docs builds (`MIX_ENV=docs`) to prevent download/compile attempts while publishing HexDocs.
 
 ### Added
 - GitHub Actions workflow builds now upload tar.gz artifacts for Linux/macOS (x86_64/aarch64) including `ssi_urdna2015` feature variants, plus per-file `.sha256` and aggregate `checksums.txt`.

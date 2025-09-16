@@ -24,12 +24,11 @@ defmodule JsonldEx.Native do
       base_url: "https://github.com/nocsi/jsonld/releases/download/v#{@version}",
       force_build: System.get_env("JSONLD_NIF_FORCE_BUILD") in ["1", "true"],
       features: @nif_features,
+      # Temporarily reduced target set to match current release matrix.
+      # Unsupported hosts fall back to local build automatically.
       targets: [
         "x86_64-unknown-linux-gnu",
         "aarch64-unknown-linux-gnu",
-        "x86_64-unknown-linux-musl",
-        "aarch64-unknown-linux-musl",
-        "x86_64-apple-darwin",
         "aarch64-apple-darwin"
       ],
       nif_versions: [

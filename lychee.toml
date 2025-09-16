@@ -1,0 +1,23 @@
+verbose = true
+no_progress = true
+timeout = 30
+max_redirects = 5
+max_retries = 3
+retry_wait_time = 2
+
+# Treat common transient codes as OK to reduce flakiness
+accept = [200, 206, 429]
+
+# Ignore links that are known to flap or are environment-specific
+exclude = [
+  "^mailto:",
+  "^tel:",
+  "localhost",
+  "127\.0\.0\.1",
+  "::1",
+  # GitHub release assets are ephemeral during builds and may 404 temporarily
+  "github\.com/.*/releases/download/",
+  # Shields badges can rate-limit aggressively
+  "img\.shields\.io",
+]
+
