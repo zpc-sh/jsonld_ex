@@ -210,10 +210,38 @@ Note: For local builds, ensure your Rust toolchain supports Cargo.lock v4
 - AArch64 host tip: To avoid x86_64 locally, skip it:
   - `make preflight-aarch64` or `SKIP_X86_64=1 make preflight`
   - `make preflight-ssi-aarch64` or `SKIP_X86_64=1 make preflight-ssi`
+  - The script auto-skips x86_64 by default on aarch64/arm64 hosts (override by setting `SKIP_X86_64=0`).
+ - Subsets for faster iteration:
+   - GNU-only: `make preflight-gnu-only` or with ssi `make preflight-gnu-ssi`
+   - MUSL-only: `make preflight-musl-only` or with ssi `make preflight-musl-ssi`
+
+Setup helper
+- Install cross and verify Docker in one step:
+  - `make install-cross` (installs cross and fails early if Docker/Colima is not available)
+ - Install zigbuild fallback and verify zig:
+   - `make install-zigbuild`
 
 Preflight environment overrides
 - `CROSS_IMAGE_PLATFORM`: Platform passed to `docker run` for cross images (default: `linux/amd64`).
 - `CROSS_IMAGE_TAG`: Tag to pull for `ghcr.io/cross-rs/<target>:<tag>` (tried first, then falls back to `latest`, then `main`).
+- `CROSS_IMAGE_TAG_<TARGET>`: Per-target tag override; format the `<TARGET>` by replacing dashes with underscores.
+  - Examples:
+    - `CROSS_IMAGE_TAG_x86_64_unknown_linux_gnu=v0.2.5`
+    - `CROSS_IMAGE_TAG_aarch64_unknown_linux_gnu=main`
+
+Suggested cross image tags
+- Default recommendation: use `latest` for all targets unless you need to pin.
+- If you prefer pinning, use the per-target overrides:
+  - GNU (glibc):
+    - `x86_64-unknown-linux-gnu`: `CROSS_IMAGE_TAG_x86_64_unknown_linux_gnu=latest`
+    - `aarch64-unknown-linux-gnu`: `CROSS_IMAGE_TAG_aarch64_unknown_linux_gnu=latest`
+  - MUSL:
+    - `x86_64-unknown-linux-musl`: `CROSS_IMAGE_TAG_x86_64_unknown_linux_musl=latest`
+    - `aarch64-unknown-linux-musl`: `CROSS_IMAGE_TAG_aarch64_unknown_linux_musl=latest`
+- Notes:
+  - On Apple Silicon/Colima, set `DOCKER_DEFAULT_PLATFORM=linux/amd64` (or `CROSS_IMAGE_PLATFORM=linux/amd64`) so amd64 images run under Rosetta.
+  - To diagnose image issues, try pulling manually:
+    - `docker pull --platform linux/amd64 ghcr.io/cross-rs/<target>:latest`
 
 ## License
 

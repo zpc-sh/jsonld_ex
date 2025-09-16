@@ -1,6 +1,8 @@
 # BUILD: Advanced Makefile for JsonldEx development
 
 .PHONY: help clean dev prod test bench ci pgo install format lint docs release
+.PHONY: install-cross verify-docker
+.PHONY: install-zigbuild
 
 # Default target
 .DEFAULT_GOAL := help
@@ -65,6 +67,29 @@ install: ## Install all dependencies
 	mix deps.get
 	cd native/jsonld_nif && cargo fetch
 
+# BUILD: Install cross and verify Docker
+install-cross: ## Install the cross tool (containerized builds) and verify Docker
+	@echo "$(BLUE)[BUILD]$(NC) Installing cross (containerized Rust builds)..."
+	cargo install cross || true
+	@echo "$(BLUE)[BUILD]$(NC) Verifying Docker connectivity..."
+	@docker info >/dev/null 2>&1 \
+		&& echo "$(GREEN)[OK]$(NC) Docker is available" \
+		|| (echo "$(YELLOW)[WARN]$(NC) Docker not available. Start Docker/Colima and retry." && exit 1)
+
+verify-docker: ## Check Docker/Colima availability for cross
+	@docker info >/dev/null 2>&1 \
+		&& echo "$(GREEN)[OK]$(NC) Docker is available" \
+		|| (echo "$(YELLOW)[WARN]$(NC) Docker not available. Start Docker/Colima and retry." && exit 1)
+
+# BUILD: Install cargo-zigbuild and verify zig (fallback path when Docker is unavailable)
+install-zigbuild: ## Install cargo-zigbuild and verify zig is installed
+	@echo "$(BLUE)[BUILD]$(NC) Installing cargo-zigbuild..."
+	cargo install cargo-zigbuild || true
+	@echo "$(BLUE)[BUILD]$(NC) Checking for zig compiler..."
+	@command -v zig >/dev/null 2>&1 \
+		&& zig version \
+		|| (echo "$(YELLOW)[WARN]$(NC) 'zig' not found. Install zig (e.g., 'brew install zig' on macOS or 'sudo apt-get install -y zig' on Debian/Ubuntu) and re-run." && exit 1)
+
 # BUILD: Format code
 format: ## Format Elixir and Rust code
 	@echo "$(BLUE)[BUILD]$(NC) Formatting code..."
@@ -124,3 +149,36 @@ outdated: ## Check for outdated dependencies
 	@echo "$(BLUE)[BUILD]$(NC) Checking for outdated dependencies..."
 	mix hex.outdated
 	cd native/jsonld_nif && cargo outdated
+
+# BUILD: Local preflight cross-build of Linux precompiled NIFs
+preflight: ## Build and package Linux gnu+musl artifacts locally (outputs to work/precompiled)
+	@echo "$(BLUE)[BUILD]$(NC) Running local preflight (no features)..."
+	bash scripts/preflight.sh
+
+preflight-ssi: ## Build and package Linux artifacts with ssi_urdna2015 feature
+	@echo "$(BLUE)[BUILD]$(NC) Running local preflight with FEATURES=ssi_urdna2015..."
+	FEATURES=ssi_urdna2015 bash scripts/preflight.sh
+
+preflight-aarch64: ## Preflight for aarch64-only (skip x86_64)
+	@echo "$(BLUE)[BUILD]$(NC) Running local preflight for aarch64-only..."
+	SKIP_X86_64=1 bash scripts/preflight.sh
+
+preflight-ssi-aarch64: ## Preflight with ssi feature for aarch64-only (skip x86_64)
+	@echo "$(BLUE)[BUILD]$(NC) Running local preflight ssi for aarch64-only..."
+	SKIP_X86_64=1 FEATURES=ssi_urdna2015 bash scripts/preflight.sh
+
+preflight-gnu-only: ## Preflight GNU targets only (skip MUSL)
+	@echo "$(BLUE)[BUILD]$(NC) Running preflight for GNU-only targets..."
+	SKIP_MUSL=1 bash scripts/preflight.sh
+
+preflight-gnu-ssi: ## Preflight GNU targets only with ssi feature
+	@echo "$(BLUE)[BUILD]$(NC) Running preflight for GNU-only targets with ssi..."
+	SKIP_MUSL=1 FEATURES=ssi_urdna2015 bash scripts/preflight.sh
+
+preflight-musl-only: ## Preflight MUSL targets only (skip GNU)
+	@echo "$(BLUE)[BUILD]$(NC) Running preflight for MUSL-only targets..."
+	SKIP_GNU=1 bash scripts/preflight.sh
+
+preflight-musl-ssi: ## Preflight MUSL targets only with ssi feature
+	@echo "$(BLUE)[BUILD]$(NC) Running preflight for MUSL-only targets with ssi..."
+	SKIP_GNU=1 FEATURES=ssi_urdna2015 bash scripts/preflight.sh

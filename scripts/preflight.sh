@@ -19,9 +19,11 @@ OUT_DIR="$ROOT_DIR/work/precompiled"
 mkdir -p "$OUT_DIR"
 
 FEATURES=${FEATURES:-}
-# Optional architecture skip flags for local runs
-SKIP_X86_64=${SKIP_X86_64:-0}
-SKIP_AARCH64=${SKIP_AARCH64:-0}
+# Optional skip flags for local runs
+SKIP_X86_64=${SKIP_X86_64:-}
+SKIP_AARCH64=${SKIP_AARCH64:-}
+SKIP_GNU=${SKIP_GNU:-0}
+SKIP_MUSL=${SKIP_MUSL:-0}
 NIF_VERSIONS=(2.16 2.15 2.14)
 LINUX_GNU_TARGETS=(x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu)
 LINUX_MUSL_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
@@ -41,41 +43,34 @@ have() { command -v "$1" >/dev/null 2>&1; }
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
 docker_ready() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 
+# If running on Apple Silicon/aarch64 hosts and skip flags unset, default to skipping x86_64
+host_arch=$(uname -m || echo unknown)
+if [[ -z "${SKIP_X86_64}" && "$host_arch" =~ ^(aarch64|arm64)$ ]]; then
+  SKIP_X86_64=1
+fi
+if [[ -z "${SKIP_AARCH64}" ]]; then
+  SKIP_AARCH64=0
+fi
+if [[ -z "${SKIP_X86_64}" ]]; then
+  SKIP_X86_64=0
+fi
+
 build_with_cross() {
   local target=$1
-  local features_arg=""
-  [[ -n "$FEATURES" ]] && features_arg="--features $FEATURES"
-
-  # Prefer running inside cross Docker images directly to avoid host toolchain installs
-  local image_base="ghcr.io/cross-rs/${target}"
-  local tags=()
-  if [[ -n "${CROSS_IMAGE_TAG:-}" ]]; then
-    tags+=("${CROSS_IMAGE_TAG}")
-  fi
-  tags+=(latest main)
-  local image=""
-  for tag in "${tags[@]}"; do
-    if docker pull ${platform:-} "${image_base}:${tag}" >/dev/null 2>&1; then
-      image="${image_base}:${tag}"
-      break
-    fi
-  done
-  if [[ -z "$image" ]]; then
-    echo "[preflight] Failed to find cross image for $target (tried: ${tags[*]}). Install cross and Docker, or run MUSL via zigbuild." >&2
+  local features_flag=()
+  [[ -n "$FEATURES" ]] && features_flag=(--features "$FEATURES")
+  if ! have cross; then
+    echo "[preflight] 'cross' not found. Install with: cargo install cross" >&2
     exit 3
   fi
-  # Default to amd64 images; override via CROSS_IMAGE_PLATFORM if needed.
-  local platform="--platform=${CROSS_IMAGE_PLATFORM:-linux/amd64}"
-  echo "[preflight] Using image: ${image} with ${platform}"
-
-  docker run --rm $platform \
-    -e CARGO_HOME=/cargo -e RUSTUP_HOME=/rustup \
-    -v "$ROOT_DIR":/project \
-    -v "$HOME/.cargo/registry":/cargo/registry \
-    -v "$HOME/.cargo/git":/cargo/git \
-    -w /project/native/jsonld_nif \
-    "$image" \
-    sh -lc "cargo build --release --target $target $features_arg"
+  (
+    cd "$NATIVE_DIR" \
+    && env -u RUSTUP_TOOLCHAIN \
+       DOCKER_DEFAULT_PLATFORM=${DOCKER_DEFAULT_PLATFORM:-linux/amd64} \
+       CROSS_CONTAINER_ENGINE=${CROSS_CONTAINER_ENGINE:-docker} \
+       CROSS_FORCE_DOCKER=1 \
+       cross build --release --target "$target" "${features_flag[@]}"
+  )
 }
 
 build_with_cargo() {
@@ -143,6 +138,9 @@ build_target() {
 echo "==> Preflight build: VERSION=$VERSION FEATURES=${FEATURES:-<none>}"
 
 BUILD_GNU=1
+if [[ "$SKIP_GNU" -eq 1 ]]; then
+  BUILD_GNU=0
+fi
 if is_darwin && ! docker_ready; then
   echo "[preflight] Docker not available; GNU targets require cross+Docker on macOS. Skipping GNU targets." >&2
   BUILD_GNU=0
@@ -164,19 +162,23 @@ for nif in "${NIF_VERSIONS[@]}"; do
       package_artifact "$t" "$nif"
     done
   fi
-  for t in "${LINUX_MUSL_TARGETS[@]}"; do
-    if [[ "$SKIP_X86_64" -eq 1 && "$t" == x86_64-* ]]; then
-      echo "[preflight] Skipping $t due to SKIP_X86_64=1"
-      continue
-    fi
-    if [[ "$SKIP_AARCH64" -eq 1 && "$t" == aarch64-* ]]; then
-      echo "[preflight] Skipping $t due to SKIP_AARCH64=1"
-      continue
-    fi
-    echo "-- Building target=$t nif=$nif"
-    build_target "$t"
-    package_artifact "$t" "$nif"
-  done
+  if [[ "$SKIP_MUSL" -ne 1 ]]; then
+    for t in "${LINUX_MUSL_TARGETS[@]}"; do
+      if [[ "$SKIP_X86_64" -eq 1 && "$t" == x86_64-* ]]; then
+        echo "[preflight] Skipping $t due to SKIP_X86_64=1"
+        continue
+      fi
+      if [[ "$SKIP_AARCH64" -eq 1 && "$t" == aarch64-* ]]; then
+        echo "[preflight] Skipping $t due to SKIP_AARCH64=1"
+        continue
+      fi
+      echo "-- Building target=$t nif=$nif"
+      build_target "$t"
+      package_artifact "$t" "$nif"
+    done
+  else
+    echo "[preflight] Skipping MUSL targets due to SKIP_MUSL=1"
+  fi
 done
 
 echo "==> Done. Artifacts in $OUT_DIR"
