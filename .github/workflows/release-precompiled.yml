@@ -426,8 +426,12 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Install musl tools and zig
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd zig
+          echo "CC_x86_64_unknown_linux_musl=zig cc -target x86_64-linux-musl" >> $GITHUB_ENV
+          echo "AR_x86_64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl)
         run: |
           cd native/jsonld_nif
@@ -478,8 +482,12 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Install musl tools and zig
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config zstd zig
+          echo "CC_x86_64_unknown_linux_musl=zig cc -target x86_64-linux-musl" >> $GITHUB_ENV
+          echo "AR_x86_64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl + features)
         run: |
           cd native/jsonld_nif
@@ -529,10 +537,12 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl toolchain (cross)
+      - name: Install musl toolchain (cross) and zig
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd
+          sudo apt-get install -y musl-tools pkg-config zstd zig
+          echo "CC_aarch64_unknown_linux_musl=zig cc -target aarch64-linux-musl" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl aarch64)
         run: |
           cd native/jsonld_nif
@@ -583,10 +593,12 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl toolchain (cross)
+      - name: Install musl toolchain (cross) and zig
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd
+          sudo apt-get install -y musl-tools pkg-config zstd zig
+          echo "CC_aarch64_unknown_linux_musl=zig cc -target aarch64-linux-musl" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl aarch64 + features)
         run: |
           cd native/jsonld_nif
