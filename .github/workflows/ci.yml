@@ -9,6 +9,8 @@ on:
 jobs:
   build-test-base:
     runs-on: ubuntu-latest
+    env:
+      JSONLD_NIF_FORCE_BUILD: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -69,4 +71,3 @@ jobs:
         run: mix compile
       - name: Test (include ssi)
         run: mix test
-
