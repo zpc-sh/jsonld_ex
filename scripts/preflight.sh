@@ -43,14 +43,25 @@ docker_ready() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&
 
 build_with_cross() {
   local target=$1
-  local features_flag=()
-  [[ -n "$FEATURES" ]] && features_flag=(--features "$FEATURES")
-  (
-    cd "$NATIVE_DIR" \
-    && RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN:-stable} \
-       CROSS_CONTAINER_ENGINE=${CROSS_CONTAINER_ENGINE:-docker} CROSS_FORCE_DOCKER=1 \
-       cross build --release --target "$target" "${features_flag[@]}"
-  )
+  local features_arg=""
+  [[ -n "$FEATURES" ]] && features_arg="--features $FEATURES"
+
+  # Prefer running inside cross Docker images directly to avoid host toolchain installs
+  local image="ghcr.io/cross-rs/${target}:stable"
+  local platform=""
+  case "$target" in
+    x86_64-*) platform="--platform=linux/amd64" ;;
+    aarch64-*) platform="--platform=linux/arm64" ;;
+  esac
+
+  docker run --rm $platform \
+    -e CARGO_HOME=/cargo -e RUSTUP_HOME=/rustup \
+    -v "$ROOT_DIR":/project \
+    -v "$HOME/.cargo/registry":/cargo/registry \
+    -v "$HOME/.cargo/git":/cargo/git \
+    -w /project/native/jsonld_nif \
+    "$image" \
+    sh -lc "cargo build --release --target $target $features_arg"
 }
 
 build_with_cargo() {
