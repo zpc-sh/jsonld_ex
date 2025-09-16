@@ -426,10 +426,16 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl tools and zig
+      - name: Install musl tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd zig
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR for musl
+        run: |
           echo "CC_x86_64_unknown_linux_musl=zig cc -target x86_64-linux-musl" >> $GITHUB_ENV
           echo "AR_x86_64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl)
@@ -482,10 +488,16 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl tools and zig
+      - name: Install musl tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd zig
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR for musl
+        run: |
           echo "CC_x86_64_unknown_linux_musl=zig cc -target x86_64-linux-musl" >> $GITHUB_ENV
           echo "AR_x86_64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl + features)
@@ -537,10 +549,16 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl toolchain (cross) and zig
+      - name: Install musl toolchain (cross)
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd zig
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR for musl aarch64
+        run: |
           echo "CC_aarch64_unknown_linux_musl=zig cc -target aarch64-linux-musl" >> $GITHUB_ENV
           echo "AR_aarch64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl aarch64)
@@ -593,10 +611,16 @@ jobs:
           toolchain: stable
           target: ${{ env.TARGET }}
           override: true
-      - name: Install musl toolchain (cross) and zig
+      - name: Install musl toolchain (cross)
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools pkg-config zstd zig
+          sudo apt-get install -y musl-tools pkg-config zstd
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.12.0
+      - name: Configure Zig CC/AR for musl aarch64
+        run: |
           echo "CC_aarch64_unknown_linux_musl=zig cc -target aarch64-linux-musl" >> $GITHUB_ENV
           echo "AR_aarch64_unknown_linux_musl=zig ar" >> $GITHUB_ENV
       - name: Build NIF (musl aarch64 + features)
