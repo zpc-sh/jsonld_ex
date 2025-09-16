@@ -26,6 +26,8 @@ env:
   FEATURES: ${{ inputs.features }}
   NIF_VERSION: ${{ inputs.nif_version }}
   TARGETS: ${{ inputs.targets }}
+  RUST_BACKTRACE: full
+  CARGO_TERM_COLOR: always
 
 jobs:
   linux-x86_64-gnu:
@@ -47,9 +49,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
@@ -93,9 +95,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
@@ -146,9 +148,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
@@ -199,9 +201,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
@@ -240,9 +242,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
@@ -281,9 +283,9 @@ jobs:
         run: |
           cd native/jsonld_nif
           if [ -n "${FEATURES}" ]; then
-            cargo build --release --target $TARGET --features "$FEATURES"
+            cargo build --verbose --release --target $TARGET --features "$FEATURES"
           else
-            cargo build --release --target $TARGET
+            cargo build --verbose --release --target $TARGET
           fi
       - name: Package
         run: |
