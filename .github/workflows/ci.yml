@@ -43,6 +43,88 @@ jobs:
       - name: Test
         run: mix test --exclude ssi
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26'
+          elixir-version: '1.16'
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Install deps
+        run: mix deps.get
+      - name: Elixir format check
+        run: mix format --check-formatted
+      - name: Elixir credo
+        run: mix credo --strict
+      - name: Rust format check
+        run: |
+          cd native/jsonld_nif
+          rustup component add rustfmt || true
+          cargo fmt -- --check
+      - name: Rust clippy
+        run: |
+          cd native/jsonld_nif
+          rustup component add clippy || true
+          cargo clippy -- -D warnings
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26'
+          elixir-version: '1.16'
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Install Elixir deps
+        run: mix deps.get
+      - name: Hex deps audit
+        run: mix deps.audit
+      - name: Install cargo-audit
+        run: cargo install cargo-audit || true
+      - name: Cargo audit
+        run: |
+          cd native/jsonld_nif
+          cargo audit
+
+  changelog:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require CHANGELOG for user-facing changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          echo "Comparing $BASE...$HEAD"
+          files=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$files" | sed 's/^/ - /'
+          # If no user-facing files changed, skip requirement
+          if ! echo "$files" | grep -E '^(lib/|native/|README\.md|mix\.exs)'; then
+            echo "No user-facing changes detected; skipping CHANGELOG requirement."
+            exit 0
+          fi
+          if echo "$files" | grep -q '^CHANGELOG\.md$'; then
+            echo "CHANGELOG.md updated."
+            exit 0
+          fi
+          echo "ERROR: CHANGELOG.md must be updated for user-facing changes." >&2
+          exit 1
+
   build-test-ssi:
     runs-on: ubuntu-latest
     env:

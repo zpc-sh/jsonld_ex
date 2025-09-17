@@ -21,7 +21,7 @@ defmodule JsonldEx.Native do
       otp_app: :jsonld_ex,
       crate: "jsonld_nif",
       version: @version,
-      base_url: "https://github.com/nocsi/jsonld/releases/download/v#{@version}",
+      base_url: "https://github.com/zpc-sh/jsonld_ex/releases/download/v#{@version}",
       force_build: System.get_env("JSONLD_NIF_FORCE_BUILD") in ["1", "true"],
       features: @nif_features,
       # Temporarily reduced target set to match current release matrix.

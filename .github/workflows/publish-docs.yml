@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docs:
     if: ${{ !contains(github.ref_name, '-') }}

@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or code to reproduce the issue
+      render: bash
+  - type: input
+    attributes:
+      label: Version
+      description: Output of `mix hex.info jsonld_ex` or mix.exs version
+  - type: textarea
+    attributes:
+      label: Environment
+      description: OS, Elixir/Erlang versions, Rust toolchain
+  - type: textarea
+    attributes:
+      label: Logs
+      description: Relevant logs or error messages
+      render: text
+
