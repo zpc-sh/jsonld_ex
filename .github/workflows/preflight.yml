@@ -29,6 +29,10 @@ env:
   RUST_BACKTRACE: full
   CARGO_TERM_COLOR: always
 
+concurrency:
+  group: preflight-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux-x86_64-gnu:
     if: ${{ !inputs.targets || inputs.targets == 'all' || inputs.targets == 'gnu' }}

@@ -26,6 +26,10 @@ env:
   # Determine prerelease flag: from release tag name, or manual input
   IS_PRERELEASE: ${{ github.event_name == 'release' && contains(github.event.release.tag_name, '-') || inputs.prerelease }}
 
+concurrency:
+  group: release-${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag_name || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux-x86_64:
     runs-on: ubuntu-latest
