@@ -1,13 +1,11 @@
 defmodule JsonldEx.Native do
   @version Mix.Project.config()[:version]
-  @nif_features (
-    case System.get_env("JSONLD_NIF_FEATURES") do
-      nil -> []
-      "" -> []
-      "none" -> []
-      f -> String.split(f, ",", trim: true)
-    end
-  )
+  @nif_features (case System.get_env("JSONLD_NIF_FEATURES") do
+                   nil -> []
+                   "" -> []
+                   "none" -> []
+                   f -> String.split(f, ",", trim: true)
+                 end)
 
   # Prefer precompiled NIFs from GitHub releases; fall back to local build if
   # download is unavailable or JSONLD_NIF_FORCE_BUILD is set.
@@ -29,6 +27,7 @@ defmodule JsonldEx.Native do
       targets: [
         "x86_64-unknown-linux-gnu",
         "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
         "aarch64-apple-darwin"
       ],
       nif_versions: [
@@ -40,7 +39,7 @@ defmodule JsonldEx.Native do
 
   def expand(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def expand_binary(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
-  def compact(_input, _context, _opts), do: :erlang.nif_error(:nif_not_loaded) 
+  def compact(_input, _context, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def flatten(_input, _context, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def to_rdf(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def from_rdf(_input, _opts), do: :erlang.nif_error(:nif_not_loaded)
@@ -58,10 +57,13 @@ defmodule JsonldEx.Native do
   def generate_blueprint_context(_blueprint_data, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def merge_documents(_documents, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def build_dependency_graph(_blueprints), do: :erlang.nif_error(:nif_not_loaded)
-  
+
   # High-performance diff operations
   def diff_structural(_old_document, _new_document, _opts), do: :erlang.nif_error(:nif_not_loaded)
-  def diff_operational(_old_document, _new_document, _opts), do: :erlang.nif_error(:nif_not_loaded)
+
+  def diff_operational(_old_document, _new_document, _opts),
+    do: :erlang.nif_error(:nif_not_loaded)
+
   def diff_semantic(_old_document, _new_document, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def patch_structural(_document, _patch, _opts), do: :erlang.nif_error(:nif_not_loaded)
   def patch_operational(_document, _patch, _opts), do: :erlang.nif_error(:nif_not_loaded)

@@ -45,9 +45,9 @@ proptest = "1.4"
 
 # BUILD: Advanced build profiles for different use cases
 [profile.release]
-lto = "fat"  # Full LTO for maximum optimization
+lto = false  # Disable LTO for macOS compatibility
 opt-level = 3
-codegen-units = 1
+codegen-units = 16  # Increase for faster builds without LTO
 panic = "abort"  # Smaller binaries, faster performance
 strip = true     # Strip debug symbols
 debug = false
@@ -60,9 +60,9 @@ overflow-checks = true
 # BUILD: High-performance release profile for production
 [profile.production]
 inherits = "release"
-lto = "fat"
+lto = false
 opt-level = 3
-codegen-units = 1
+codegen-units = 16
 panic = "abort"
 strip = true
 debug = false

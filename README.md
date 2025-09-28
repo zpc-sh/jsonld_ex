@@ -48,7 +48,7 @@ JsonldEx delivers exceptional performance through its Rust-based NIF implementat
 - 🚀 **36x faster** than pure Elixir implementations
 - 📋 Full JSON-LD 1.1 specification support
 - ⚡ High-performance Rust NIF backend
-- 🔍 Semantic versioning with dependency resolution 
+- 🔍 Semantic versioning with dependency resolution
 - 🌐 Graph operations and query capabilities
 - 💾 Context caching and optimization
 - 📦 Batch processing for multiple operations
@@ -81,7 +81,7 @@ doc = %{
 json_string = Jason.encode!(doc)
 {:ok, expanded} = JsonldEx.Native.expand(json_string, [])
 
-# Compact with a context  
+# Compact with a context
 context = %{"name" => "https://schema.org/name"}
 context_string = Jason.encode!(context)
 {:ok, compacted} = JsonldEx.Native.compact(expanded, context_string, [])
@@ -107,7 +107,7 @@ context_string = Jason.encode!(context)
 ### Utility Operations
 
 - `parse_semantic_version/1` - Parse semantic versions
-- `compare_versions/2` - Compare semantic versions  
+- `compare_versions/2` - Compare semantic versions
 - `validate_document/2` - Validate JSON-LD documents
 - `cache_context/2` - Cache contexts for reuse
 - `batch_process/1` - Process multiple operations
@@ -119,7 +119,7 @@ context_string = Jason.encode!(context)
 ## Why Choose JsonldEx?
 
 - **Performance**: 36x faster than pure Elixir implementations
-- **Reliability**: Memory-safe Rust implementation  
+- **Reliability**: Memory-safe Rust implementation
 - **Compatibility**: Full JSON-LD 1.1 specification support
 - **Scalability**: Handles large documents efficiently
 - **Production Ready**: Battle-tested Rust JSON libraries
@@ -129,6 +129,59 @@ context_string = Jason.encode!(context)
 
 - Rust NIF is optional; Elixir fallbacks work when NIF is unavailable.
 - Requires a recent Rust toolchain (Cargo.lock v4 compatible) to build native code.
+
+### macOS Build Issues
+
+If you encounter LTO-related compiler errors on macOS (e.g., `options -C embed-bitcode=no and -C lto are incompatible`), use:
+
+```bash
+JSONLD_NIF_FORCE_BUILD=1 mix compile
+# or
+make macos
+```
+
+This forces local compilation with optimized settings for macOS compatibility. The project has been configured to handle recent macOS/Xcode toolchain changes automatically.
+
+### GitHub Releases & Precompiled NIFs
+
+If you're experiencing `rustler_precompiled` download failures, you can trigger GitHub workflows to generate missing precompiled artifacts:
+
+#### Quick Fix (Recommended)
+```bash
+# Setup GitHub CLI (one-time)
+make gh-setup
+
+# Check current status
+make gh-status
+
+# Auto-fix missing artifacts for current version
+make gh-fix-missing
+```
+
+#### Manual Control
+```bash
+# Create new release with precompiled NIFs
+make gh-release
+
+# Rebuild precompiled NIFs for existing release
+make gh-precompiled
+
+# Check workflow status
+make gh-check-releases
+```
+
+#### What This Does
+- **`gh-status`**: Checks if your current version has precompiled macOS artifacts
+- **`gh-fix-missing`**: Automatically triggers GitHub Actions to build missing artifacts
+- **`gh-release`**: Creates a new release with full precompiled NIF matrix
+- **`gh-setup`**: Installs and configures GitHub CLI
+
+#### Requirements
+- GitHub CLI (`gh`) - installed automatically by `make gh-setup`
+- Repository write access (for maintainers)
+- GitHub Actions enabled on the repository
+
+This solves the `rustler_precompiled` issue by ensuring all target platforms have precompiled artifacts available for download.
 
 ### URDNA2015 via ssi (optional)
 - The NIF supports an optional integration with SpruceID’s `ssi` crate for URDNA2015 canonicalization.
@@ -252,6 +305,57 @@ Suggested cross image tags
   - On Apple Silicon/Colima, set `DOCKER_DEFAULT_PLATFORM=linux/amd64` (or `CROSS_IMAGE_PLATFORM=linux/amd64`) so amd64 images run under Rosetta.
   - To diagnose image issues, try pulling manually:
     - `docker pull --platform linux/amd64 ghcr.io/cross-rs/<target>:latest`
+
+## Troubleshooting
+
+### Common Issues
+
+#### `rustler_precompiled` Download Failures
+**Error**: `couldn't fetch NIF from https://github.com/.../releases/download/...`
+
+**Solutions**:
+1. **Quick fix**: `make gh-fix-missing` (auto-triggers missing artifact builds)
+2. **Local build**: `make macos` or `JSONLD_NIF_FORCE_BUILD=1 mix compile`
+3. **Manual trigger**: `make gh-release` to create new release with all artifacts
+
+#### macOS LTO Compiler Errors  
+**Error**: `options -C embed-bitcode=no and -C lto are incompatible`
+
+**Solution**: Use local build with `make macos` - the project is pre-configured for latest macOS/Xcode compatibility.
+
+#### Missing GitHub CLI
+**Error**: `GitHub CLI (gh) not found`
+
+**Solution**: Run `make gh-setup` to automatically install and configure GitHub CLI.
+
+#### Authentication Issues
+**Error**: `Failed to trigger workflow. Make sure you're authenticated`
+
+**Solution**: 
+```bash
+gh auth login
+# or
+make gh-setup
+```
+
+#### Workflow Permission Issues
+**Error**: API calls fail with permission errors
+
+**Cause**: Repository requires write access for release workflows.
+
+**Solution**: Contact repository maintainers or fork the repository.
+
+### Getting Help
+
+1. **Check artifact status**: `make gh-status`
+2. **View recent releases**: `make gh-check-releases`  
+3. **Force local build**: `make macos`
+4. **Reset and retry**: `mix clean && make macos`
+
+For persistent issues, please file a GitHub issue with:
+- Your OS and architecture (`uname -a`)
+- Elixir/OTP versions (`elixir --version`)
+- Error output from `make gh-status`
 
 ## License
 

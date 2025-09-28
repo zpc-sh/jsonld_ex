@@ -2,6 +2,12 @@
 rustflags = [
     "-C", "link-arg=-undefined",
     "-C", "link-arg=dynamic_lookup",
+    "-C", "embed-bitcode=no",
+]
+
+[build]
+rustflags = [
+    "-C", "embed-bitcode=no",
 ]
 
 # Ensure correct cross-linker is used for Linux aarch64 on x86_64 CI runners

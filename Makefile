@@ -2,6 +2,7 @@
 
 .PHONY: help clean dev prod test bench ci pgo install format lint docs release
 .PHONY: install-cross verify-docker
+.PHONY: gh-release gh-precompiled gh-check-releases gh-status gh-fix-missing gh-setup
 .PHONY: install-zigbuild
 .PHONY: preflight-check
 
@@ -39,10 +40,17 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-12s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BLUE)Examples:$(NC)"
-	@echo "  make dev     # Fast development build"
-	@echo "  make prod    # Production build with full optimizations"
-	@echo "  make bench   # Run comprehensive benchmarks"
-	@echo "  make ci      # Full CI pipeline"
+	@echo "  make dev         # Fast development build"
+	@echo "  make prod        # Production build with full optimizations"
+	@echo "  make bench       # Run comprehensive benchmarks"
+	@echo "  make ci          # Full CI pipeline"
+	@echo "  make macos       # Force local build on macOS (fixes LTO errors)"
+	@echo ""
+	@echo "$(BLUE)GitHub Releases (fix rustler_precompiled):$(NC)"
+	@echo "  make gh-setup      # Setup GitHub CLI and authenticate"
+	@echo "  make gh-status     # Check if current version has precompiled NIFs"
+	@echo "  make gh-fix-missing # Auto-fix missing precompiled artifacts"
+	@echo "  make gh-release    # Create new GitHub release with precompiled NIFs"
 
 # BUILD: Clean all artifacts
 clean: ## Clean all build artifacts
@@ -63,6 +71,11 @@ prod: ## Production build with full optimizations
 test: ## Run tests with coverage
 	@echo "$(BLUE)[BUILD]$(NC) Running tests..."
 	./scripts/build.sh test
+
+# BUILD: macOS local build (workaround for LTO issues)
+macos: ## Force local build on macOS (fixes LTO compiler errors)
+	@echo "$(BLUE)[BUILD]$(NC) Building locally on macOS..."
+	JSONLD_NIF_FORCE_BUILD=1 mix compile
 
 # BUILD: Comprehensive benchmarks
 bench: ## Run comprehensive benchmarks
@@ -129,6 +142,146 @@ docs: ## Generate documentation
 release: prod docs ## Create a release package
 	@echo "$(BLUE)[BUILD]$(NC) Creating release package..."
 	mix hex.build
+
+# BUILD: GitHub workflow triggers
+gh-release: ## Trigger GitHub release workflow (creates new release with precompiled NIFs)
+	@echo "$(BLUE)[BUILD]$(NC) Triggering GitHub release workflow..."
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "$(YELLOW)[ERROR]$(NC) GitHub CLI (gh) not found. Install with: brew install gh"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)[INPUT]$(NC) Enter new version tag (e.g., v0.4.3):"
+	@read -r VERSION; \
+	if [ -z "$$VERSION" ]; then \
+		echo "$(YELLOW)[ERROR]$(NC) Version tag cannot be empty"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)[BUILD]$(NC) Creating release $$VERSION and triggering precompiled build..."; \
+	gh workflow run release-precompiled.yml \
+		-f tag_name="$$VERSION" \
+		-f prerelease=false || \
+	(echo "$(YELLOW)[ERROR]$(NC) Failed to trigger workflow. Make sure you're authenticated: gh auth login"; exit 1)
+
+gh-precompiled: ## Trigger precompiled build workflow for existing tag
+	@echo "$(BLUE)[BUILD]$(NC) Triggering precompiled build workflow..."
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "$(YELLOW)[ERROR]$(NC) GitHub CLI (gh) not found. Install with: brew install gh"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)[INPUT]$(NC) Enter existing tag to build precompiled NIFs for (e.g., v0.4.2):"
+	@read -r VERSION; \
+	if [ -z "$$VERSION" ]; then \
+		echo "$(YELLOW)[ERROR]$(NC) Version tag cannot be empty"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)[BUILD]$(NC) Triggering precompiled build for $$VERSION..."; \
+	gh workflow run release-precompiled.yml \
+		-f tag_name="$$VERSION" \
+		-f prerelease=false || \
+	(echo "$(YELLOW)[ERROR]$(NC) Failed to trigger workflow. Make sure you're authenticated: gh auth login"; exit 1)
+
+gh-check-releases: ## Check recent GitHub releases and workflow runs
+	@echo "$(BLUE)[BUILD]$(NC) Checking recent releases and workflows..."
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "$(YELLOW)[ERROR]$(NC) GitHub CLI (gh) not found. Install with: brew install gh"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "$(GREEN)Recent Releases:$(NC)"
+	@gh release list --limit 5 || echo "$(YELLOW)[WARN]$(NC) Could not fetch releases"
+	@echo ""
+	@echo "$(GREEN)Recent Workflow Runs:$(NC)"
+	@gh run list --workflow=release-precompiled.yml --limit 5 || echo "$(YELLOW)[WARN]$(NC) Could not fetch workflow runs"
+	@echo ""
+	@echo "$(BLUE)Tip:$(NC) Use 'gh release view <tag>' to see assets for a specific release"
+
+gh-status: ## Check if current version has precompiled macOS artifacts
+	@echo "$(BLUE)[BUILD]$(NC) Checking precompiled artifact status..."
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "$(YELLOW)[ERROR]$(NC) GitHub CLI (gh) not found. Install with: brew install gh"; \
+		exit 1; \
+	fi
+	@CURRENT_VERSION=$$(grep 'version:' mix.exs | sed 's/.*version: "\([^"]*\)".*/\1/'); \
+	echo "$(GREEN)Current version:$(NC) $$CURRENT_VERSION"; \
+	echo "$(BLUE)[BUILD]$(NC) Checking release v$$CURRENT_VERSION..."; \
+	if gh release view "v$$CURRENT_VERSION" >/dev/null 2>&1; then \
+		echo "$(GREEN)✓$(NC) Release v$$CURRENT_VERSION exists"; \
+		echo "$(BLUE)Assets:$(NC)"; \
+		gh release view "v$$CURRENT_VERSION" --json assets --jq '.assets[].name' | grep -E '\.(tar\.gz|so)$$' || echo "$(YELLOW)[WARN]$(NC) No precompiled assets found"; \
+		if gh release view "v$$CURRENT_VERSION" --json assets --jq '.assets[].name' | grep -q 'aarch64-apple-darwin'; then \
+			echo "$(GREEN)✓$(NC) macOS Apple Silicon artifacts available"; \
+		else \
+			echo "$(YELLOW)[MISSING]$(NC) macOS Apple Silicon artifacts missing"; \
+		fi; \
+		if gh release view "v$$CURRENT_VERSION" --json assets --jq '.assets[].name' | grep -q 'x86_64-apple-darwin'; then \
+			echo "$(GREEN)✓$(NC) macOS Intel artifacts available"; \
+		else \
+			echo "$(YELLOW)[MISSING]$(NC) macOS Intel artifacts missing"; \
+		fi; \
+	else \
+		echo "$(YELLOW)[MISSING]$(NC) Release v$$CURRENT_VERSION does not exist"; \
+		echo "$(BLUE)Suggestion:$(NC) Run 'make gh-release' to create it"; \
+	fi
+
+gh-fix-missing: ## Automatically fix missing precompiled artifacts for current version
+	@echo "$(BLUE)[BUILD]$(NC) Checking and fixing missing precompiled artifacts..."
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "$(YELLOW)[ERROR]$(NC) GitHub CLI (gh) not found. Install with: brew install gh"; \
+		exit 1; \
+	fi
+	@CURRENT_VERSION=$$(grep 'version:' mix.exs | sed 's/.*version: "\([^"]*\)".*/\1/'); \
+	echo "$(GREEN)Current version:$(NC) $$CURRENT_VERSION"; \
+	if gh release view "v$$CURRENT_VERSION" >/dev/null 2>&1; then \
+		echo "$(GREEN)✓$(NC) Release v$$CURRENT_VERSION exists"; \
+		if ! gh release view "v$$CURRENT_VERSION" --json assets --jq '.assets[].name' | grep -q 'apple-darwin'; then \
+			echo "$(YELLOW)[FIXING]$(NC) Missing macOS artifacts, triggering rebuild..."; \
+			gh workflow run release-precompiled.yml \
+				-f tag_name="v$$CURRENT_VERSION" \
+				-f prerelease=false; \
+			echo "$(GREEN)✓$(NC) Rebuild triggered. Check status with 'make gh-check-releases'"; \
+		else \
+			echo "$(GREEN)✓$(NC) All macOS artifacts already available"; \
+		fi; \
+	else \
+		echo "$(YELLOW)[CREATING]$(NC) Release v$$CURRENT_VERSION does not exist, creating it..."; \
+		gh workflow run release-precompiled.yml \
+			-f tag_name="v$$CURRENT_VERSION" \
+			-f prerelease=false; \
+		echo "$(GREEN)✓$(NC) Release creation triggered. Check status with 'make gh-check-releases'"; \
+	fi
+
+gh-setup: ## Setup GitHub CLI and authenticate
+	@echo "$(BLUE)[BUILD]$(NC) Setting up GitHub CLI..."
+	@if command -v gh >/dev/null 2>&1; then \
+		echo "$(GREEN)✓$(NC) GitHub CLI already installed"; \
+	else \
+		echo "$(YELLOW)[INSTALL]$(NC) Installing GitHub CLI..."; \
+		if command -v brew >/dev/null 2>&1; then \
+			brew install gh; \
+		elif command -v apt-get >/dev/null 2>&1; then \
+			type -p curl >/dev/null || sudo apt install curl -y; \
+			curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg; \
+			chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg; \
+			echo "deb [arch=$$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null; \
+			sudo apt update; \
+			sudo apt install gh -y; \
+		else \
+			echo "$(YELLOW)[ERROR]$(NC) Please install GitHub CLI manually: https://cli.github.com/"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo "$(BLUE)[AUTH]$(NC) Checking GitHub authentication..."
+	@if gh auth status >/dev/null 2>&1; then \
+		echo "$(GREEN)✓$(NC) Already authenticated"; \
+		gh auth status; \
+	else \
+		echo "$(YELLOW)[SETUP]$(NC) Please authenticate with GitHub..."; \
+		gh auth login; \
+	fi
+	@echo "$(GREEN)✓$(NC) GitHub CLI ready! You can now use:"
+	@echo "  make gh-status      # Check artifact status"
+	@echo "  make gh-fix-missing # Fix missing artifacts"
+	@echo "  make gh-release     # Create new release"
 
 # BUILD: Watch for changes and rebuild (development)
 watch: ## Watch for changes and rebuild automatically
