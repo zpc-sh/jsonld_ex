@@ -131,7 +131,7 @@ format: ## Format Elixir and Rust code
 lint: ## Lint Elixir and Rust code
 	@echo "$(BLUE)[BUILD]$(NC) Linting code..."
 	mix format --check-formatted
-	mix credo --strict
+	JSONLD_NIF_FORCE_BUILD=1 mix credo --strict
 	cd native/jsonld_nif && cargo clippy -- -D warnings
 
 # BUILD: Generate documentation
