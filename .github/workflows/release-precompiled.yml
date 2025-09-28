@@ -143,58 +143,7 @@ jobs:
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
 
-  macos-x86_64:
 
-    runs-on: macos-12
-    strategy:
-      matrix:
-        nif: ["2.16", "2.15", "2.14"]
-    env:
-      TARGET: x86_64-apple-darwin
-      NIF_VERSION: ${{ matrix.nif }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ env.TARGET }}
-          override: true
-      - name: Build NIF
-        run: |
-          cd native/jsonld_nif
-          cargo build --release --target $TARGET
-      - name: Package artifact (tar.gz)
-        run: |
-          set -euxo pipefail
-          VERSION=${TAG_NAME#v}
-          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
-          LIB=libjsonld_nif.dylib
-          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}.so.tar.gz
-          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
-          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
-      - name: SHA256
-        run: |
-          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
-      - name: Upload asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          files: |
-            ${{ env.ARTIFACT }}
-            ${{ env.ARTIFACT }}.sha256
-          prerelease: ${{ env.IS_PRERELEASE }}
-          overwrite: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT }}
-          path: |
-            ${{ env.ARTIFACT }}
-            ${{ env.ARTIFACT }}.sha256
 
   macos-aarch64:
     runs-on: macos-14
@@ -359,57 +308,7 @@ jobs:
             ${{ env.ARTIFACT }}
             ${{ env.ARTIFACT }}.sha256
 
-  macos-x86_64-ssi:
-    if: false # temporarily disabled (ssi variant)
-    runs-on: macos-12
-    strategy:
-      matrix:
-        nif: ["2.16", "2.15", "2.14"]
-    env:
-      TARGET: x86_64-apple-darwin
-      NIF_VERSION: ${{ matrix.nif }}
-      FEATURES: ssi_urdna2015
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ env.TARGET }}
-          override: true
-      - name: Build NIF with features
-        run: |
-          cd native/jsonld_nif
-          cargo build --release --target $TARGET --features $FEATURES
-      - name: Package artifact (tar.gz)
-        run: |
-          set -euxo pipefail
-          VERSION=${GITHUB_REF_NAME#v}
-          # macOS lib extension is .dylib but the artifact name keeps .so to match RustlerPrecompiled expectations
-          LIB=libjsonld_nif.dylib
-          SRC=native/jsonld_nif/target/${TARGET}/release/${LIB}
-          OUT=libjsonld_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-features-${FEATURES}.tar.gz
-          tar -C "$(dirname "$SRC")" -czf "$OUT" "$(basename "$SRC")"
-          echo "ARTIFACT=$OUT" >> $GITHUB_ENV
-      - name: SHA256
-        run: |
-          shasum -a 256 "$ARTIFACT" | awk '{print $1 "  " $2}' > "$ARTIFACT.sha256"
-      - name: Upload asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ${{ env.ARTIFACT }}
-            ${{ env.ARTIFACT }}.sha256
-          prerelease: ${{ env.IS_PRERELEASE }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT }}
-          path: |
-            ${{ env.ARTIFACT }}
-            ${{ env.ARTIFACT }}.sha256
+
 
   macos-aarch64-ssi:
     if: false # temporarily disabled (ssi variant)

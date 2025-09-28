@@ -214,11 +214,6 @@ gh-status: ## Check if current version has precompiled macOS artifacts
 		else \
 			echo "$(YELLOW)[MISSING]$(NC) macOS Apple Silicon artifacts missing"; \
 		fi; \
-		if gh release view "v$$CURRENT_VERSION" --json assets --jq '.assets[].name' | grep -q 'x86_64-apple-darwin'; then \
-			echo "$(GREEN)✓$(NC) macOS Intel artifacts available"; \
-		else \
-			echo "$(YELLOW)[MISSING]$(NC) macOS Intel artifacts missing"; \
-		fi; \
 	else \
 		echo "$(YELLOW)[MISSING]$(NC) Release v$$CURRENT_VERSION does not exist"; \
 		echo "$(BLUE)Suggestion:$(NC) Run 'make gh-release' to create it"; \
