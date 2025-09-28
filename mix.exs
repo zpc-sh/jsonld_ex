@@ -4,7 +4,7 @@ defmodule JsonldEx.MixProject do
   def project do
     [
       app: :jsonld_ex,
-      version: "0.4.4",
+      version: "0.4.5",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -55,7 +55,7 @@ defmodule JsonldEx.MixProject do
     [
       name: "jsonld_ex",
       licenses: ["Apache-2.0"],
-      maintainers: ["NOCSI"],
+      maintainers: ["ZPC"],
       description:
         "A JSON-LD library for Elixir, providing a Rust-based implementation for performance.",
       files:
@@ -67,7 +67,7 @@ defmodule JsonldEx.MixProject do
             "native/jsonld_nif/.gitignore",
             "native/jsonld_nif/.cargo"
           ],
-      links: %{"GitHub" => "https://github.com/nocsi/jsonld"}
+      links: %{"GitHub" => "https://github.com/zpc-sh/jsonld"}
     ]
   end
 end
