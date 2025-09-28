@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [0.4.2] - 2025-09-01
 
+
+## [0.4.4] - 2025-09-28
+
+### Added
+- 
+
+### Changed
+- 
+
+### Fixed
+- 
+
 ### Changed
 - Align precompiled NIF artifact names and format with `rustler_precompiled` expectations (tar.gz, name includes version, NIF version, and target), enabling successful runtime downloads.
 - Add clear Publishing Guide to README with release steps and local build fallbacks.

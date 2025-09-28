@@ -4,7 +4,7 @@ defmodule JsonldEx.MixProject do
   def project do
     [
       app: :jsonld_ex,
-      version: "0.4.2",
+      version: "0.4.4",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -36,8 +36,8 @@ defmodule JsonldEx.MixProject do
     [
       main: "JsonldEx",
       name: "JsonldEx",
-      source_url: "https://github.com/nocsi/jsonld",
-      homepage_url: "https://github.com/nocsi/jsonld",
+      source_url: "https://github.com/zpc-sh/jsonld",
+      homepage_url: "https://github.com/zpc-sh/jsonld",
       extras: ["README.md"]
     ]
   end

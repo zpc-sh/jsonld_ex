@@ -2,7 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/jsonld_ex.svg)](https://hex.pm/packages/jsonld_ex)
 [![Documentation](https://img.shields.io/badge/documentation-hexdocs-blue.svg)](https://hexdocs.pm/jsonld_ex)
-[![Docs Workflow](https://github.com/nocsi/jsonld/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/publish-docs.yml)
+[![Docs Workflow](https://github.com/zpc-sh/jsonld/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/publish-docs.yml)
 [![License](https://img.shields.io/hexpm/l/jsonld_ex.svg)](https://github.com/nocsi/jsonld/blob/main/LICENSE)
 [![CI](https://github.com/nocsi/jsonld/actions/workflows/ci.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/ci.yml)
 [![Release (precompiled NIFs)](https://github.com/nocsi/jsonld/actions/workflows/release-precompiled.yml/badge.svg)](https://github.com/nocsi/jsonld/actions/workflows/release-precompiled.yml)
@@ -192,8 +192,8 @@ This solves the `rustler_precompiled` issue by ensuring all target platforms hav
 
 ### Precompiled NIFs (rustler_precompiled)
 - This library uses `rustler_precompiled` to download precompiled NIFs from GitHub releases matching the library version.
-- Targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`.
-  - Note: Releases may temporarily publish a reduced subset (currently Linux gnu: x86_64, aarch64; macOS: aarch64) while we simplify the matrix. Missing targets will fall back to local build.
+- Targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `aarch64-apple-darwin`.
+  - Note: macOS Intel (`x86_64-apple-darwin`) support has been removed as 99%+ of macOS developers are now on Apple Silicon. Missing targets fall back to local build.
 - If a precompiled artifact is not available, it falls back to local build.
 - Default features: none. The `ssi_urdna2015` feature is opt-in and only used when explicitly enabled (see env toggles below). Artifact selection matches the chosen feature set.
   - Feature variants append `-features-<features>` to the tarball name, e.g. `-features-ssi_urdna2015`.
@@ -213,7 +213,7 @@ This solves the `rustler_precompiled` issue by ensuring all target platforms hav
   - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-gnu.tar.gz`
   - `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-musl.tar.gz`
   - feature variant example: `libjsonld_nif-v<version>-nif-2.16-x86_64-unknown-linux-musl-features-ssi_urdna2015.tar.gz`
-  - macOS feature example: `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin-features-ssi_urdna2015.tar.gz`
+  - macOS Apple Silicon example: `libjsonld_nif-v<version>-nif-2.16-aarch64-apple-darwin-features-ssi_urdna2015.tar.gz`
   - corresponding `.sha256` files and aggregated `checksums.txt`.
 - After assets are present, publish the Hex package:
   - `mix hex.build`
@@ -318,7 +318,7 @@ Suggested cross image tags
 2. **Local build**: `make macos` or `JSONLD_NIF_FORCE_BUILD=1 mix compile`
 3. **Manual trigger**: `make gh-release` to create new release with all artifacts
 
-#### macOS LTO Compiler Errors  
+#### macOS LTO Compiler Errors
 **Error**: `options -C embed-bitcode=no and -C lto are incompatible`
 
 **Solution**: Use local build with `make macos` - the project is pre-configured for latest macOS/Xcode compatibility.
@@ -331,7 +331,7 @@ Suggested cross image tags
 #### Authentication Issues
 **Error**: `Failed to trigger workflow. Make sure you're authenticated`
 
-**Solution**: 
+**Solution**:
 ```bash
 gh auth login
 # or
@@ -348,7 +348,7 @@ make gh-setup
 ### Getting Help
 
 1. **Check artifact status**: `make gh-status`
-2. **View recent releases**: `make gh-check-releases`  
+2. **View recent releases**: `make gh-check-releases`
 3. **Force local build**: `make macos`
 4. **Reset and retry**: `mix clean && make macos`
 
