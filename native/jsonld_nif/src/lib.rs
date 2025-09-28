@@ -3218,7 +3218,7 @@ fn patch_semantic<'a>(
         serde_json::from_str::<Value>(&document),
         serde_json::from_str::<Value>(&patch_str),
     ) {
-        (Ok(mut doc), Ok(patch)) => {
+        (Ok(doc), Ok(patch)) => {
             let mut result = doc.clone();
 
             // Apply RDF-level triple changes (limited support: rdf:type on root subject)
