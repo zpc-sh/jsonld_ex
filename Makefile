@@ -91,7 +91,12 @@ help: ## Show this help message
 # BUILD: Clean all artifacts
 clean: ## Clean all build artifacts
 	@echo "$(BLUE)[BUILD]$(NC) Cleaning all build artifacts..."
-	./scripts/build.sh clean
+	mix clean --deps
+	rm -rf _build
+	rm -rf deps/_build
+	rm -rf priv/native/*.so priv/native/*.dylib
+	./scripts/build.sh clean || true
+	@echo "$(GREEN)✓$(NC) All build artifacts cleaned"
 
 # BUILD: Development build
 dev: ## Fast development build
@@ -126,6 +131,8 @@ nif-clean: ## Clean NIF artifacts
 	rm -f checksum-Elixir.JsonldEx.Native.exs
 	rm -rf priv/native/*.so priv/native/*.dylib
 	rm -rf _build/*/lib/jsonld_ex/priv/native/
+	rm -rf _build/*/lib/jsonld_ex/ebin/
+	mix clean jsonld_ex || true
 	@echo "$(GREEN)✓$(NC) NIF artifacts cleaned"
 
 nif-update-checksum: ## Update checksum file for current version
