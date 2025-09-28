@@ -12,9 +12,19 @@ defmodule Mix.Tasks.Spec.Say do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv,
-      switches: [id: :string, type: :string, body: :string, ref_path: :string, ref_pointer: :string, dest: :string, attach: :keep]
-    )
+    {opts, _, _} =
+      OptionParser.parse(argv,
+        switches: [
+          id: :string,
+          type: :string,
+          body: :string,
+          ref_path: :string,
+          ref_pointer: :string,
+          dest: :string,
+          attach: :keep
+        ]
+      )
+
     id = req!(opts, :id)
     type = req!(opts, :type)
     body = req!(opts, :body)
@@ -22,9 +32,19 @@ defmodule Mix.Tasks.Spec.Say do
     ref_args = ref_opts(opts)
     attach_args = Enum.flat_map(Keyword.get_values(opts, :attach), fn f -> ["--attach", f] end)
 
-    Mix.Task.run("spec.msg.new", ["--id", id, "--type", type, "--body", body] ++ ref_args ++ attach_args)
+    Mix.Task.run(
+      "spec.msg.new",
+      ["--id", id, "--type", type, "--body", body] ++ ref_args ++ attach_args
+    )
 
-    dest_inbox = dest || Path.join([System.get_env("SPEC_HANDOFF_DIR") || raise("Provide --dest or set SPEC_HANDOFF_DIR"), id, "inbox"])
+    dest_inbox =
+      dest ||
+        Path.join([
+          System.get_env("SPEC_HANDOFF_DIR") || raise("Provide --dest or set SPEC_HANDOFF_DIR"),
+          id,
+          "inbox"
+        ])
+
     Mix.Task.run("spec.msg.push", ["--id", id, "--dest", dest_inbox])
     Mix.Task.run("spec.thread.render", ["--id", id])
   end

@@ -21,4 +21,3 @@ defmodule Mix.Tasks.Spec.Check do
     end
   end
 end
-

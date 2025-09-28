@@ -12,10 +12,13 @@ defmodule Mix.Tasks.Spec.Receiver.Init do
   @impl true
   def run(argv) do
     {opts, _, _} = OptionParser.parse(argv, switches: [dest: :string])
-    dest = Keyword.get(opts, :dest) || System.get_env("SPEC_HANDOFF_DIR") ||
-             Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
+
+    dest =
+      Keyword.get(opts, :dest) || System.get_env("SPEC_HANDOFF_DIR") ||
+        Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
 
     src_root = Path.join([File.cwd!(), "work", "spec_requests"])
+
     files = [
       {"README.receivers.md", Path.join(src_root, "README.receivers.md")},
       {"ack.schema.json", Path.join(src_root, "ack.schema.json")},

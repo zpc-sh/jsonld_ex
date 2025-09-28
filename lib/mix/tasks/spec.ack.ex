@@ -10,9 +10,18 @@ defmodule Mix.Tasks.Spec.Ack do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv,
-      switches: [id: :string, owner: :string, contact: :string, eta: :string, branch: :string, status: :string, notes: :string]
-    )
+    {opts, _, _} =
+      OptionParser.parse(argv,
+        switches: [
+          id: :string,
+          owner: :string,
+          contact: :string,
+          eta: :string,
+          branch: :string,
+          status: :string,
+          notes: :string
+        ]
+      )
 
     id = req!(opts, :id)
     owner = req!(opts, :owner)
@@ -27,7 +36,7 @@ defmodule Mix.Tasks.Spec.Ack do
 
     ack_path = Path.join(root, "ack.json")
     now = DateTime.utc_now() |> DateTime.to_iso8601()
-    ack = File.exists?(ack_path) && Jason.decode!(File.read!(ack_path)) || %{}
+    ack = (File.exists?(ack_path) && Jason.decode!(File.read!(ack_path))) || %{}
 
     ack =
       ack

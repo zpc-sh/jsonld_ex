@@ -123,13 +123,14 @@ install-zigbuild: ## Install cargo-zigbuild and verify zig is installed
 
 # BUILD: Format code
 format: ## Format Elixir and Rust code
-	@echo "$(BLUE)[BUILD]$(NC) Formatting code..."
+	@echo "$(BLUE)[BUILD]$(NC) Formatting code with .formatter.exs..."
 	mix format
 	cd native/jsonld_nif && cargo fmt
 
 # BUILD: Lint code
 lint: ## Lint Elixir and Rust code
 	@echo "$(BLUE)[BUILD]$(NC) Linting code..."
+	mix format --check-formatted
 	mix credo --strict
 	cd native/jsonld_nif && cargo clippy -- -D warnings
 

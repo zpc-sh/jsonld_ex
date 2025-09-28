@@ -12,12 +12,18 @@ defmodule Mix.Tasks.Spec.Msg.Push do
   def run(argv) do
     {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, dest: :string])
     id = req!(opts, :id)
+
     dest_inbox =
       case Keyword.get(opts, :dest) do
         nil ->
-          base = System.get_env("SPEC_HANDOFF_DIR") || Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
+          base =
+            System.get_env("SPEC_HANDOFF_DIR") ||
+              Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
+
           Path.join([base, id, "inbox"])
-        v -> v
+
+        v ->
+          v
       end
 
     src_root = Path.join(["work", "spec_requests", id])
@@ -33,10 +39,12 @@ defmodule Mix.Tasks.Spec.Msg.Push do
       # copy attachments referenced by this message
       Enum.each(msg["attachments"] || [], fn rel_path ->
         src = Path.join(src_root, rel_path)
-        target = Path.join(dest_inbox |> Path.expand(".."), rel_path) # peer's request root + rel_path
+        # peer's request root + rel_path
+        target = Path.join(dest_inbox |> Path.expand(".."), rel_path)
         File.mkdir_p!(Path.dirname(target))
         File.cp!(src, target)
       end)
+
       Mix.shell().info("Pushed #{Path.basename(msg_path)}")
     end
   end

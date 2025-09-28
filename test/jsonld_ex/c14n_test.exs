@@ -26,4 +26,3 @@ defmodule JsonldEx.C14nTest do
     assert byte_size(nq) > 0
   end
 end
-

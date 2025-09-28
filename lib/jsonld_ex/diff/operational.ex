@@ -1,35 +1,35 @@
 defmodule JsonldEx.Diff.Operational do
   @moduledoc """
   CRDT-based operational diff for concurrent editing of JSON-LD documents.
-  
+
   This implementation uses operation-based conflict-free replicated data types
   to generate diffs as sequences of operations that can be applied concurrently
   and merged without conflicts.
-  
+
   Operations are based on the JSON CRDT paper by Bartosz Sypytkowski:
   https://www.bartoszsypytkowski.com/operation-based-crdts-json-document/
   """
 
   @type operation :: %{
-    type: :set | :delete | :insert | :move | :copy,
-    path: [atom() | integer()],
-    value: term(),
-    timestamp: integer(),
-    actor_id: binary()
-  }
+          type: :set | :delete | :insert | :move | :copy,
+          path: [atom() | integer()],
+          value: term(),
+          timestamp: integer(),
+          actor_id: binary()
+        }
 
   @type operational_diff :: %{
-    operations: [operation()],
-    metadata: %{
-      actors: [binary()],
-      timestamp_range: {integer(), integer()},
-      conflict_resolution: :last_write_wins | :merge
-    }
-  }
+          operations: [operation()],
+          metadata: %{
+            actors: [binary()],
+            timestamp_range: {integer(), integer()},
+            conflict_resolution: :last_write_wins | :merge
+          }
+        }
 
   @doc """
   Generate operational diff between two JSON-LD documents.
-  
+
   Returns a sequence of operations that transform old into new.
   Operations include timestamps and actor IDs for conflict resolution.
   """
@@ -37,10 +37,10 @@ defmodule JsonldEx.Diff.Operational do
   def diff(old, new, opts \\ []) do
     actor_id = Keyword.get(opts, :actor_id, generate_actor_id())
     base_timestamp = Keyword.get(opts, :timestamp, System.system_time(:nanosecond))
-    
+
     try do
       operations = diff_recursive(old, new, [], actor_id, base_timestamp)
-      
+
       diff_result = %{
         operations: operations,
         metadata: %{
@@ -49,7 +49,7 @@ defmodule JsonldEx.Diff.Operational do
           conflict_resolution: Keyword.get(opts, :conflict_resolution, :last_write_wins)
         }
       }
-      
+
       {:ok, diff_result}
     rescue
       error -> {:error, {:diff_failed, error}}
@@ -62,10 +62,11 @@ defmodule JsonldEx.Diff.Operational do
   @spec patch(map(), operational_diff(), keyword()) :: {:ok, map()} | {:error, term()}
   def patch(document, %{operations: operations}, opts \\ []) do
     try do
-      result = Enum.reduce(operations, document, fn op, acc ->
-        apply_operation(acc, op, opts)
-      end)
-      
+      result =
+        Enum.reduce(operations, document, fn op, acc ->
+          apply_operation(acc, op, opts)
+        end)
+
       {:ok, result}
     rescue
       error -> {:error, {:patch_failed, error}}
@@ -78,10 +79,11 @@ defmodule JsonldEx.Diff.Operational do
   @spec validate_patch(map(), operational_diff(), keyword()) :: {:ok, boolean()} | {:error, term()}
   def validate_patch(document, %{operations: operations}, _opts \\ []) do
     try do
-      valid = Enum.all?(operations, fn op ->
-        validate_operation(document, op)
-      end)
-      
+      valid =
+        Enum.all?(operations, fn op ->
+          validate_operation(document, op)
+        end)
+
       {:ok, valid}
     rescue
       error -> {:error, {:validation_failed, error}}
@@ -90,30 +92,30 @@ defmodule JsonldEx.Diff.Operational do
 
   @doc """
   Merge multiple operational diffs.
-  
+
   Operations are merged by timestamp, with conflict resolution
   based on the strategy specified.
   """
   @spec merge_diffs([operational_diff()], keyword()) :: {:ok, operational_diff()} | {:error, term()}
   def merge_diffs(diffs, opts \\ []) when is_list(diffs) do
     try do
-      all_operations = 
+      all_operations =
         diffs
         |> Enum.flat_map(& &1.operations)
         |> Enum.sort_by(& &1.timestamp)
-      
-      all_actors = 
+
+      all_actors =
         diffs
-        |> Enum.flat_map(&(&1.metadata.actors))
+        |> Enum.flat_map(& &1.metadata.actors)
         |> Enum.uniq()
-      
-      conflict_resolution = 
-        opts 
-        |> Keyword.get(:conflict_resolution) 
+
+      conflict_resolution =
+        opts
+        |> Keyword.get(:conflict_resolution)
         |> resolve_conflict_strategy(diffs)
-      
+
       merged_operations = resolve_conflicts(all_operations, conflict_resolution)
-      
+
       result = %{
         operations: merged_operations,
         metadata: %{
@@ -122,7 +124,7 @@ defmodule JsonldEx.Diff.Operational do
           conflict_resolution: conflict_resolution
         }
       }
-      
+
       {:ok, result}
     rescue
       error -> {:error, {:merge_failed, error}}
@@ -135,16 +137,16 @@ defmodule JsonldEx.Diff.Operational do
   @spec inverse(operational_diff(), keyword()) :: {:ok, operational_diff()} | {:error, term()}
   def inverse(%{operations: operations, metadata: metadata}, opts \\ []) do
     try do
-      inverse_operations = 
+      inverse_operations =
         operations
         |> Enum.reverse()
         |> Enum.map(&invert_operation/1)
-      
+
       result = %{
         operations: inverse_operations,
         metadata: Map.put(metadata, :conflict_resolution, :inverse)
       }
-      
+
       {:ok, result}
     rescue
       error -> {:error, {:inverse_failed, error}}
@@ -159,26 +161,26 @@ defmodule JsonldEx.Diff.Operational do
 
   defp diff_recursive(old, new, path, actor_id, timestamp) when is_map(old) and is_map(new) do
     all_keys = MapSet.union(MapSet.new(Map.keys(old)), MapSet.new(Map.keys(new)))
-    
+
     Enum.flat_map(all_keys, fn key ->
       old_val = Map.get(old, key)
       new_val = Map.get(new, key)
       new_path = path ++ [key]
-      
+
       cond do
         old_val == nil ->
           [create_set_operation(new_path, new_val, actor_id, timestamp)]
-        
+
         new_val == nil ->
           [create_delete_operation(new_path, actor_id, timestamp)]
-        
+
         old_val != new_val ->
           if is_map(old_val) and is_map(new_val) do
             diff_recursive(old_val, new_val, new_path, actor_id, timestamp + 1)
           else
             [create_set_operation(new_path, new_val, actor_id, timestamp)]
           end
-        
+
         true ->
           []
       end
@@ -261,6 +263,7 @@ defmodule JsonldEx.Diff.Operational do
             # Use this delete as a move source
             new_dm = if rest == [], do: Map.delete(dm, v), else: Map.put(dm, v, rest)
             {[{i, j} | mv], new_dm, ins_acc}
+
           _ ->
             # No matching delete, keep as real insert
             {mv, dm, [{j, v} | ins_acc]}
@@ -289,11 +292,14 @@ defmodule JsonldEx.Diff.Operational do
         Enum.reduce(1..new_len, t, fn j, tt ->
           a = Enum.at(old, i - 1)
           b = Enum.at(new, j - 1)
-          val = if a == b do
-            :array.get(j - 1, Enum.at(tt, i - 1)) + 1
-          else
-            max(:array.get(j, Enum.at(tt, i - 1)), :array.get(j - 1, Enum.at(tt, i)))
-          end
+
+          val =
+            if a == b do
+              :array.get(j - 1, Enum.at(tt, i - 1)) + 1
+            else
+              max(:array.get(j, Enum.at(tt, i - 1)), :array.get(j - 1, Enum.at(tt, i)))
+            end
+
           row = :array.set(j, val, Enum.at(tt, i))
           List.replace_at(tt, i, row)
         end)
@@ -320,10 +326,12 @@ defmodule JsonldEx.Diff.Operational do
 
     # Changes: positions where both arrays have an element at same index but differ
     common_len = min(old_len, new_len)
+
     changes =
       Enum.reduce(0..(common_len - 1), [], fn idx, acc ->
         a = Enum.at(old, idx)
         b = Enum.at(new, idx)
+
         if a != b and MapSet.member?(lcs_old_idx, idx) and MapSet.member?(lcs_new_idx, idx) do
           [{idx, b} | acc]
         else
@@ -336,16 +344,25 @@ defmodule JsonldEx.Diff.Operational do
   end
 
   defp backtrack_lcs(_table, _old, _new, 0, 0, acc), do: Enum.reverse(acc)
-  defp backtrack_lcs(table, old, new, i, 0, acc) when i > 0, do: backtrack_lcs(table, old, new, i - 1, 0, acc)
-  defp backtrack_lcs(table, old, new, 0, j, acc) when j > 0, do: backtrack_lcs(table, old, new, 0, j - 1, acc)
+
+  defp backtrack_lcs(table, old, new, i, 0, acc) when i > 0,
+    do: backtrack_lcs(table, old, new, i - 1, 0, acc)
+
+  defp backtrack_lcs(table, old, new, 0, j, acc) when j > 0,
+    do: backtrack_lcs(table, old, new, 0, j - 1, acc)
+
   defp backtrack_lcs(table, old, new, i, j, acc) do
     a = Enum.at(old, i - 1)
     b = Enum.at(new, j - 1)
+
     cond do
-      a == b -> backtrack_lcs(table, old, new, i - 1, j - 1, [{i - 1, j - 1} | acc])
+      a == b ->
+        backtrack_lcs(table, old, new, i - 1, j - 1, [{i - 1, j - 1} | acc])
+
       true ->
         up = :array.get(j, Enum.at(table, i - 1))
         left = :array.get(j - 1, Enum.at(table, i))
+
         if up >= left do
           backtrack_lcs(table, old, new, i - 1, j, acc)
         else
@@ -428,15 +445,20 @@ defmodule JsonldEx.Diff.Operational do
                 else
                   to_index
                 end
+
               insert_at = min(max(adjusted_to, 0), length(arr_removed))
               new_arr = List.insert_at(arr_removed, insert_at, item)
               put_in(doc, container_path, new_arr)
             else
               doc
             end
-          _ -> doc
+
+          _ ->
+            doc
         end
-      _ -> document
+
+      _ ->
+        document
     end
   end
 
@@ -461,10 +483,15 @@ defmodule JsonldEx.Diff.Operational do
       {container_path, [to_index]} when is_integer(to_index) and is_integer(from_index) ->
         case get_in(document, container_path) do
           arr when is_list(arr) ->
-            from_index >= 0 and from_index < length(arr) and to_index >= 0 and to_index <= length(arr)
-          _ -> false
+            from_index >= 0 and from_index < length(arr) and to_index >= 0 and
+              to_index <= length(arr)
+
+          _ ->
+            false
         end
-      _ -> false
+
+      _ ->
+        false
     end
   end
 

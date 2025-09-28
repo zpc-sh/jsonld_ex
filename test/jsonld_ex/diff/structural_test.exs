@@ -75,7 +75,7 @@ defmodule JsonldEx.Diff.StructuralTest do
       new = %{"items" => ["b", "a", "c"]}
 
       {:ok, diff} = Structural.diff(old, new, include_moves: true)
-      
+
       # Should detect that "b" moved from position 1 to position 0
       assert Map.has_key?(diff["items"], "_0")
       move_op = diff["items"]["_0"]
@@ -87,7 +87,7 @@ defmodule JsonldEx.Diff.StructuralTest do
       new = %{"items" => ["b", "a", "c"]}
 
       {:ok, diff} = Structural.diff(old, new, include_moves: false)
-      
+
       # Should treat as changes rather than moves
       assert diff["items"]["_0"] == ["a", "b"]
       assert diff["items"]["_1"] == ["b", "a"]
@@ -96,11 +96,21 @@ defmodule JsonldEx.Diff.StructuralTest do
 
   describe "text diffing" do
     test "uses text diff for long strings" do
-      old = %{"description" => String.duplicate("This is a long description that should trigger text diffing. ", 10)}
-      new = %{"description" => String.duplicate("This is a modified long description that should trigger text diffing. ", 10)}
+      old = %{
+        "description" =>
+          String.duplicate("This is a long description that should trigger text diffing. ", 10)
+      }
+
+      new = %{
+        "description" =>
+          String.duplicate(
+            "This is a modified long description that should trigger text diffing. ",
+            10
+          )
+      }
 
       {:ok, diff} = Structural.diff(old, new, text_diff: true)
-      
+
       # Should create text diff format [text_diff, 0, 2]
       text_diff = diff["description"]
       assert is_list(text_diff) and length(text_diff) == 3

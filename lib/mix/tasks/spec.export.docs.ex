@@ -23,13 +23,14 @@ defmodule Mix.Tasks.Spec.Export.Docs do
     # Copy receiver docs & schemas
     src_spec = Path.join([File.cwd!(), "work", "spec_requests"])
     File.mkdir_p!(Path.join(dest, "work/spec_requests"))
+
     for name <- [
-      "README.receivers.md",
-      "ack.schema.json",
-      "schema.json",
-      "ack.example.json",
-      "message.schema.json"
-    ] do
+          "README.receivers.md",
+          "ack.schema.json",
+          "schema.json",
+          "ack.example.json",
+          "message.schema.json"
+        ] do
       copy!(Path.join(src_spec, name), Path.join(dest, "work/spec_requests/" <> name))
     end
 

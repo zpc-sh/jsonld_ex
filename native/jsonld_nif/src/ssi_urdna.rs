@@ -17,7 +17,11 @@ pub mod ssi_urdna {
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .collect();
         lines.sort_unstable();
-        let out = if lines.is_empty() { String::new() } else { lines.join("\n") + "\n" };
+        let out = if lines.is_empty() {
+            String::new()
+        } else {
+            lines.join("\n") + "\n"
+        };
         Ok(out)
     }
 }

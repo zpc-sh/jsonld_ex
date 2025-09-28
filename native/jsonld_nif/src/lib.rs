@@ -1,9 +1,9 @@
-use rustler::{Encoder, Env, NifResult, Term, Binary, OwnedBinary};
-use serde_json::{json, Value};
-use semver::{Version, VersionReq};
-use std::str;
-use memchr::memmem;
 use bumpalo::Bump;
+use memchr::memmem;
+use rustler::{Binary, Encoder, Env, NifResult, OwnedBinary, Term};
+use semver::{Version, VersionReq};
+use serde_json::{json, Value};
+use std::str;
 use wide::{u8x32, CmpEq};
 
 // We'll start with our own implementation and optimize from there
@@ -11,12 +11,12 @@ use wide::{u8x32, CmpEq};
 // use json_ld::syntax::{Parse, Value as JsonLdValue};
 // use tokio::runtime::Runtime;
 
-use std::sync::Arc;
 use lazy_static::lazy_static;
 use lru::LruCache;
-use std::sync::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::sync::Mutex;
 mod ssi_urdna;
 
 mod atoms {
@@ -35,17 +35,17 @@ mod atoms {
 lazy_static! {
     static ref CONTEXT_CACHE: Arc<Mutex<LruCache<String, Arc<String>>>> =
         Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap())));
-    
+
     // PROC: Simple performance tracking for JSON-LD operations
     static ref PROCESSING_STATS: ProcessingStats = ProcessingStats::new();
-    
+
     // PROC: Thread-local memory pools for JSON-LD processing
     static ref ARENA_POOL: Arc<Mutex<Vec<Bump>>> = Arc::new(Mutex::new(Vec::new()));
-    
-    // PROC: Pattern cache for common JSON-LD structures  
+
+    // PROC: Pattern cache for common JSON-LD structures
     static ref PATTERN_CACHE: Arc<Mutex<LruCache<String, Value>>> =
         Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(500).unwrap())));
-    
+
     // static ref RUNTIME: Runtime = tokio::runtime::Builder::new_multi_thread()
     //     .enable_all()
     //     .build()
@@ -70,23 +70,23 @@ impl ProcessingStats {
             simd_operations: AtomicUsize::new(0),
         }
     }
-    
+
     fn increment_processed(&self) {
         self.total_processed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn increment_cache_hit(&self) {
         self.cache_hits.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn increment_cache_miss(&self) {
         self.cache_misses.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn increment_simd_ops(&self) {
         self.simd_operations.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn get_stats(&self) -> (usize, usize, usize, usize) {
         (
             self.total_processed.load(Ordering::Relaxed),
@@ -109,7 +109,8 @@ fn get_arena() -> Bump {
 fn return_arena(mut arena: Bump) {
     arena.reset();
     if let Ok(mut pool) = ARENA_POOL.lock() {
-        if pool.len() < 16 { // Limit pool size
+        if pool.len() < 16 {
+            // Limit pool size
             pool.push(arena);
         }
     }
@@ -118,10 +119,10 @@ fn return_arena(mut arena: Bump) {
 // PROC: Cache-aware JSON-LD expansion
 fn expand_with_cache(input: Value) -> Value {
     PROCESSING_STATS.increment_processed();
-    
+
     // Generate cache key from input structure
     let cache_key = generate_json_ld_cache_key(&input);
-    
+
     // Check pattern cache first
     if let Ok(mut pattern_cache) = PATTERN_CACHE.lock() {
         if let Some(cached_result) = pattern_cache.get(&cache_key) {
@@ -130,19 +131,19 @@ fn expand_with_cache(input: Value) -> Value {
         }
         PROCESSING_STATS.increment_cache_miss();
     }
-    
+
     // Use SIMD-optimized expansion with memory pool
     let arena = get_arena();
     let result = simple_expand_with_simd(input.clone(), &arena);
     return_arena(arena);
-    
+
     PROCESSING_STATS.increment_simd_ops();
-    
+
     // Cache the result for future use
     if let Ok(mut pattern_cache) = PATTERN_CACHE.lock() {
         pattern_cache.put(cache_key, result.clone());
     }
-    
+
     result
 }
 
@@ -152,7 +153,11 @@ fn generate_json_ld_cache_key(input: &Value) -> String {
         Value::Object(obj) => {
             let context_sig = obj.get("@context").map(|_| "ctx").unwrap_or("");
             let type_sig = obj.get("@type").map(|_| "typ").unwrap_or("");
-            let mut keys: Vec<_> = obj.keys().filter(|k| !k.starts_with('@')).map(|k| k.as_str()).collect();
+            let mut keys: Vec<_> = obj
+                .keys()
+                .filter(|k| !k.starts_with('@'))
+                .map(|k| k.as_str())
+                .collect();
             keys.sort();
             let keys_str = keys.join(",");
             format!("obj:{}:{}:{}", context_sig, type_sig, keys_str)
@@ -163,7 +168,7 @@ fn generate_json_ld_cache_key(input: &Value) -> String {
         Value::String(s) if s.starts_with("http") => {
             format!("iri:{}", s.len())
         }
-        _ => "val".to_string()
+        _ => "val".to_string(),
     }
 }
 
@@ -184,51 +189,68 @@ fn expand<'a>(env: Env<'a>, input: String, _opts: Vec<(String, String)>) -> NifR
             let result = serde_json::to_string(&expanded).unwrap_or_else(|_| "[]".to_string());
             Ok((atoms::ok(), result).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 // Zero-copy binary expansion - works directly on Elixir binaries
 #[rustler::nif]
-fn expand_binary<'a>(env: Env<'a>, input: Binary, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn expand_binary<'a>(
+    env: Env<'a>,
+    input: Binary,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     // Work directly on the binary data - no string copies!
     let input_bytes = input.as_slice();
-    
+
     // Fast UTF-8 validation using SIMD
     if !simdutf8::basic::from_utf8(input_bytes).is_ok() {
         return Ok((atoms::error(), "Invalid UTF-8").encode(env));
     }
-    
+
     // Zero-copy JSON parsing
     match serde_json::from_slice::<Value>(input_bytes) {
         Ok(json_val) => {
             let expanded = turbo_expand(json_val);
-            
+
             // Allocate output binary directly
             let output_json = serde_json::to_vec(&expanded).unwrap_or_else(|_| b"[]".to_vec());
             let mut binary = OwnedBinary::new(output_json.len()).unwrap();
             binary.as_mut_slice().copy_from_slice(&output_json);
-            
+
             Ok((atoms::ok(), binary.release(env)).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 #[rustler::nif]
-fn compact<'a>(env: Env<'a>, input: String, context: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&input), serde_json::from_str::<Value>(&context)) {
+fn compact<'a>(
+    env: Env<'a>,
+    input: String,
+    context: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Value>(&input),
+        serde_json::from_str::<Value>(&context),
+    ) {
         (Ok(json_val), Ok(ctx_val)) => {
             let compacted = simple_compact(json_val, ctx_val);
             let result = serde_json::to_string(&compacted).unwrap_or_else(|_| "{}".to_string());
             Ok((atoms::ok(), result).encode(env))
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env))
+        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 #[rustler::nif]
-fn flatten<'a>(env: Env<'a>, input: String, context: Option<String>, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn flatten<'a>(
+    env: Env<'a>,
+    input: String,
+    context: Option<String>,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     match serde_json::from_str::<Value>(&input) {
         Ok(json_val) => {
             let ctx_val = context.and_then(|c| serde_json::from_str::<Value>(&c).ok());
@@ -236,7 +258,7 @@ fn flatten<'a>(env: Env<'a>, input: String, context: Option<String>, _opts: Vec<
             let result = serde_json::to_string(&flattened).unwrap_or_else(|_| "{}".to_string());
             Ok((atoms::ok(), result).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -247,7 +269,7 @@ fn to_rdf<'a>(env: Env<'a>, input: String, _opts: Vec<(String, String)>) -> NifR
             let rdf = convert_to_rdf_simple(json_val);
             Ok((atoms::ok(), rdf).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -281,7 +303,7 @@ fn parse_semantic_version<'a>(env: Env<'a>, version_str: String) -> NifResult<Te
             });
             Ok((atoms::ok(), result.to_string()).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -296,25 +318,33 @@ fn compare_versions<'a>(env: Env<'a>, version1: String, version2: String) -> Nif
             };
             Ok(result.encode(env))
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env))
+        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 #[rustler::nif]
-fn satisfies_requirement<'a>(env: Env<'a>, version: String, requirement: String) -> NifResult<Term<'a>> {
+fn satisfies_requirement<'a>(
+    env: Env<'a>,
+    version: String,
+    requirement: String,
+) -> NifResult<Term<'a>> {
     // Handle npm-style requirements
     let req_str = convert_npm_requirement(&requirement);
-    
+
     match (Version::parse(&version), VersionReq::parse(&req_str)) {
         (Ok(v), Ok(req)) => Ok(req.matches(&v).encode(env)),
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env))
+        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 // Blueprint-specific Operations
 
 #[rustler::nif]
-fn generate_blueprint_context<'a>(env: Env<'a>, _blueprint_data: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn generate_blueprint_context<'a>(
+    env: Env<'a>,
+    _blueprint_data: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     let context = json!({
         "@context": {
             "@vocab": "https://blueprints.ash-hq.org/vocab/",
@@ -335,24 +365,32 @@ fn generate_blueprint_context<'a>(env: Env<'a>, _blueprint_data: String, _opts: 
 }
 
 #[rustler::nif]
-fn merge_documents<'a>(env: Env<'a>, documents: Vec<String>, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn merge_documents<'a>(
+    env: Env<'a>,
+    documents: Vec<String>,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     let mut merged = json!({});
-    
+
     for doc_str in documents {
         if let Ok(doc) = serde_json::from_str::<Value>(&doc_str) {
             merge_json(&mut merged, &doc);
         }
     }
-    
+
     Ok((atoms::ok(), merged.to_string()).encode(env))
 }
 
 #[rustler::nif]
-fn validate_document<'a>(env: Env<'a>, document: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn validate_document<'a>(
+    env: Env<'a>,
+    document: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     match serde_json::from_str::<Value>(&document) {
         Ok(doc) => {
             let mut errors = Vec::new();
-            
+
             if let Value::Object(ref obj) = doc {
                 if !obj.contains_key("@context") {
                     errors.push("Missing @context");
@@ -363,14 +401,14 @@ fn validate_document<'a>(env: Env<'a>, document: String, _opts: Vec<(String, Str
             } else {
                 errors.push("Document must be an object");
             }
-            
+
             if errors.is_empty() {
                 Ok(atoms::ok().encode(env))
             } else {
                 Ok((atoms::error(), errors).encode(env))
             }
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -381,31 +419,46 @@ fn optimize_for_storage<'a>(env: Env<'a>, document: String) -> NifResult<Term<'a
             optimize_json(&mut doc);
             Ok((atoms::ok(), doc.to_string()).encode(env))
         }
-        Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+        Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 // Graph Operations
 
 #[rustler::nif]
-fn frame<'a>(env: Env<'a>, input: String, frame_str: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&input), serde_json::from_str::<Value>(&frame_str)) {
+fn frame<'a>(
+    env: Env<'a>,
+    input: String,
+    frame_str: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Value>(&input),
+        serde_json::from_str::<Value>(&frame_str),
+    ) {
         (Ok(input_val), Ok(frame_val)) => {
             let framed = simple_frame(input_val, frame_val);
             Ok((atoms::ok(), framed.to_string()).encode(env))
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env))
+        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
 #[rustler::nif]
 fn query_nodes<'a>(env: Env<'a>, document: String, pattern: String) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&document), serde_json::from_str::<Value>(&pattern)) {
+    match (
+        serde_json::from_str::<Value>(&document),
+        serde_json::from_str::<Value>(&pattern),
+    ) {
         (Ok(doc), Ok(pat)) => {
             let matches = find_matching_nodes(&doc, &pat);
-            Ok((atoms::ok(), serde_json::to_string(&matches).unwrap_or_else(|_| "[]".to_string())).encode(env))
+            Ok((
+                atoms::ok(),
+                serde_json::to_string(&matches).unwrap_or_else(|_| "[]".to_string()),
+            )
+                .encode(env))
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env))
+        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), e.to_string()).encode(env)),
     }
 }
 
@@ -413,7 +466,7 @@ fn query_nodes<'a>(env: Env<'a>, document: String, pattern: String) -> NifResult
 fn build_dependency_graph<'a>(env: Env<'a>, blueprints: Vec<String>) -> NifResult<Term<'a>> {
     let mut nodes = Vec::new();
     let edges: Vec<Value> = Vec::new();
-    
+
     for (i, bp_str) in blueprints.iter().enumerate() {
         if let Ok(bp) = serde_json::from_str::<Value>(bp_str) {
             if let Value::Object(ref obj) = bp {
@@ -426,12 +479,12 @@ fn build_dependency_graph<'a>(env: Env<'a>, blueprints: Vec<String>) -> NifResul
             }
         }
     }
-    
+
     let graph = json!({
         "nodes": nodes,
         "edges": edges
     });
-    
+
     Ok((atoms::ok(), graph.to_string()).encode(env))
 }
 
@@ -455,14 +508,16 @@ fn batch_process<'a>(env: Env<'a>, operations: Vec<(String, String)>) -> NifResu
     #[cfg(feature = "parallel")]
     {
         use rayon::prelude::*;
-        
+
         let results: Vec<String> = operations
             .par_iter()
             .map(|(op_type, args)| {
                 match op_type.as_str() {
                     "expand" => {
                         if let Ok(input) = serde_json::from_str::<Value>(args) {
-                            serde_json::to_string(&simple_expand(input)).unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
+                            serde_json::to_string(&simple_expand(input)).unwrap_or_else(|_| {
+                                r#"{"error": "Serialization failed"}"#.to_string()
+                            })
                         } else {
                             r#"{"error": "Invalid input"}"#.to_string()
                         }
@@ -472,36 +527,39 @@ fn batch_process<'a>(env: Env<'a>, operations: Vec<(String, String)>) -> NifResu
                         if let Ok(input) = serde_json::from_str::<Value>(args) {
                             // Use simple expansion (memory pool used internally)
                             let expanded = simple_expand(input);
-                            serde_json::to_string(&expanded).unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
+                            serde_json::to_string(&expanded).unwrap_or_else(|_| {
+                                r#"{"error": "Serialization failed"}"#.to_string()
+                            })
                         } else {
                             r#"{"error": "Invalid input"}"#.to_string()
                         }
                     }
-                    _ => r#"{"error": "Unknown operation"}"#.to_string()
+                    _ => r#"{"error": "Unknown operation"}"#.to_string(),
                 }
             })
             .collect();
-            
+
         Ok((atoms::ok(), results).encode(env))
     }
     #[cfg(not(feature = "parallel"))]
     {
         let mut results = Vec::new();
-        
+
         for (op_type, args) in operations {
             let result = match op_type.as_str() {
                 "expand" => {
                     if let Ok(input) = serde_json::from_str::<Value>(&args) {
-                        serde_json::to_string(&simple_expand(input)).unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
+                        serde_json::to_string(&simple_expand(input))
+                            .unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
                     } else {
                         r#"{"error": "Invalid input"}"#.to_string()
                     }
                 }
-                _ => r#"{"error": "Unknown operation"}"#.to_string()
+                _ => r#"{"error": "Unknown operation"}"#.to_string(),
             };
             results.push(result);
         }
-        
+
         Ok((atoms::ok(), results).encode(env))
     }
 }
@@ -527,17 +585,27 @@ fn turbo_expand(input: Value) -> Value {
     thread_local! {
         static ARENA: std::cell::RefCell<Bump> = std::cell::RefCell::new(Bump::new());
     }
-    
+
     ARENA.with(|arena| {
         let mut arena = arena.borrow_mut();
         arena.reset(); // Reset the arena for this operation
-        
+
         // Use bump allocator for temporary string operations
-        turbo_expand_with_arena(input, &default_context(), &mut ExpandOptions::default(), &arena)
+        turbo_expand_with_arena(
+            input,
+            &default_context(),
+            &mut ExpandOptions::default(),
+            &arena,
+        )
     })
 }
 
-fn turbo_expand_with_arena(element: Value, active_context: &Context, options: &mut ExpandOptions, arena: &Bump) -> Value {
+fn turbo_expand_with_arena(
+    element: Value,
+    active_context: &Context,
+    options: &mut ExpandOptions,
+    arena: &Bump,
+) -> Value {
     match element {
         Value::String(s) => {
             if let Some(ref prop) = options.active_property {
@@ -545,7 +613,11 @@ fn turbo_expand_with_arena(element: Value, active_context: &Context, options: &m
                     turbo_expand_iri(&s, active_context, arena)
                 } else {
                     // Fast language tag processing
-                    match active_context.terms.get(prop).and_then(|t| t.language_mapping.as_ref()) {
+                    match active_context
+                        .terms
+                        .get(prop)
+                        .and_then(|t| t.language_mapping.as_ref())
+                    {
                         Some(LanguageMapping::Language(lang)) => {
                             json!({
                                 "@value": s,
@@ -607,24 +679,24 @@ fn turbo_expand_with_arena(element: Value, active_context: &Context, options: &m
             // Use the regular expand_value for objects (complexity here)
             expand_value(Value::Object(obj), active_context, options)
         }
-        _ => element
+        _ => element,
     }
 }
 
 // Ultra-fast SIMD-optimized IRI expansion
 fn turbo_expand_iri(iri: &str, context: &Context, _arena: &Bump) -> Value {
     let bytes = iri.as_bytes();
-    
+
     // SIMD-accelerated absolute IRI detection
     if bytes.len() >= 8 && is_absolute_iri_simd(bytes) {
         return Value::String(iri.to_string());
     }
-    
+
     // SIMD-accelerated colon search for prefixed names
     if let Some(colon_pos) = find_colon_simd(bytes) {
         let prefix = unsafe { std::str::from_utf8_unchecked(&bytes[..colon_pos]) };
         let suffix = unsafe { std::str::from_utf8_unchecked(&bytes[colon_pos + 1..]) };
-        
+
         // Fast prefix lookup with pre-computed hashes
         if let Some(prefix_iri) = context.prefixes.get(prefix) {
             let mut result = String::with_capacity(prefix_iri.len() + suffix.len());
@@ -633,7 +705,7 @@ fn turbo_expand_iri(iri: &str, context: &Context, _arena: &Bump) -> Value {
             return Value::String(result);
         }
     }
-    
+
     // Vocab expansion with pre-allocation
     let mut result = String::with_capacity(context.vocab.len() + iri.len());
     result.push_str(&context.vocab);
@@ -646,40 +718,40 @@ fn is_absolute_iri_simd(bytes: &[u8]) -> bool {
     if bytes.len() < 8 {
         return false;
     }
-    
+
     // Load first 8 bytes into SIMD register
     let chunk = &bytes[..8];
-    
+
     // Check for "http://" pattern
     if chunk == b"http://" {
         return true;
     }
-    
-    // Check for "https://" pattern  
+
+    // Check for "https://" pattern
     if bytes.len() >= 8 && &bytes[..8] == b"https://" {
         return true;
     }
-    
+
     false
 }
 
 // SIMD-accelerated colon finding
 fn find_colon_simd(bytes: &[u8]) -> Option<usize> {
     const SIMD_SIZE: usize = 32;
-    
+
     if bytes.len() < SIMD_SIZE {
         // Fallback to memchr for small strings
         return memchr::memchr(b':', bytes);
     }
-    
+
     let colon_pattern = u8x32::splat(b':');
-    
+
     // Process in SIMD chunks
     let mut pos = 0;
     while pos + SIMD_SIZE <= bytes.len() {
         let chunk = u8x32::from(&bytes[pos..pos + SIMD_SIZE]);
         let matches = chunk.cmp_eq(colon_pattern);
-        
+
         if matches.any() {
             // Find the exact position within this chunk
             for i in 0..SIMD_SIZE {
@@ -688,22 +760,22 @@ fn find_colon_simd(bytes: &[u8]) -> Option<usize> {
                 }
             }
         }
-        
+
         pos += SIMD_SIZE;
     }
-    
+
     // Check remaining bytes
     if pos < bytes.len() {
         return memchr::memchr(b':', &bytes[pos..]).map(|i| pos + i);
     }
-    
+
     None
 }
 
 // SIMD-accelerated JSON string processing
 fn turbo_process_json_string(s: &str, active_context: &Context, _property: &str) -> Value {
     let bytes = s.as_bytes();
-    
+
     // Fast path for common patterns
     if is_likely_iri_simd(bytes) {
         turbo_expand_iri(s, active_context, &Bump::new())
@@ -720,32 +792,33 @@ fn is_likely_iri_simd(bytes: &[u8]) -> bool {
     if bytes.len() < 4 {
         return false;
     }
-    
+
     // Fast SIMD search for "://" pattern
     if bytes.len() >= 8 {
         const SIMD_SIZE: usize = 32;
         let pattern = u8x32::from(*b"://                             ");
         let _pattern_bytes = pattern.as_array_ref();
-        
+
         let mut pos = 0;
         while pos + SIMD_SIZE <= bytes.len() {
             let _chunk = u8x32::from(&bytes[pos..pos + SIMD_SIZE]);
-            
+
             // Check for :// pattern in this chunk
             for i in 0..SIMD_SIZE - 2 {
                 if pos + i + 2 < bytes.len() {
-                    if bytes[pos + i] == b':' && 
-                       bytes[pos + i + 1] == b'/' && 
-                       bytes[pos + i + 2] == b'/' {
+                    if bytes[pos + i] == b':'
+                        && bytes[pos + i + 1] == b'/'
+                        && bytes[pos + i + 2] == b'/'
+                    {
                         return true;
                     }
                 }
             }
-            
+
             pos += SIMD_SIZE - 2; // Overlap to catch patterns at boundaries
         }
     }
-    
+
     // Fallback to simple search for remaining bytes
     memmem::find(bytes, b"://").is_some()
 }
@@ -842,39 +915,45 @@ fn expand_value(element: Value, active_context: &Context, options: &mut ExpandOp
         }
         Value::Object(mut obj) => {
             let mut result = serde_json::Map::new();
-            
+
             // Check if this is a value object
             if obj.contains_key("@value") {
                 return expand_value_object(obj, active_context);
             }
-            
+
             // Process @context first
             if let Some(context_val) = obj.remove("@context") {
                 // Context processing would go here - simplified for now
                 let _ = context_val;
             }
-            
+
             // Process @type
             if let Some(type_val) = obj.remove("@type") {
-                result.insert("@type".to_string(), expand_type_value(type_val, active_context));
+                result.insert(
+                    "@type".to_string(),
+                    expand_type_value(type_val, active_context),
+                );
             }
-            
+
             // Process @id
             if let Some(id_val) = obj.remove("@id") {
                 if let Value::String(id_str) = id_val {
                     result.insert("@id".to_string(), expand_iri(&id_str, active_context));
                 }
             }
-            
+
             // Process @graph
             if let Some(graph_val) = obj.remove("@graph") {
                 let mut graph_options = ExpandOptions {
                     active_property: Some("@graph".to_string()),
                     ..options.clone()
                 };
-                result.insert("@graph".to_string(), expand_value(graph_val, active_context, &mut graph_options));
+                result.insert(
+                    "@graph".to_string(),
+                    expand_value(graph_val, active_context, &mut graph_options),
+                );
             }
-            
+
             // Process @list
             if let Some(list_val) = obj.remove("@list") {
                 if let Value::Array(list_array) = list_val {
@@ -884,16 +963,19 @@ fn expand_value(element: Value, active_context: &Context, options: &mut ExpandOp
                     }
                     result.insert("@list".to_string(), Value::Array(expanded_list));
                 } else {
-                    result.insert("@list".to_string(), Value::Array(vec![expand_value(list_val, active_context, options)]));
+                    result.insert(
+                        "@list".to_string(),
+                        Value::Array(vec![expand_value(list_val, active_context, options)]),
+                    );
                 }
             }
-            
+
             // Process @set
             if let Some(set_val) = obj.remove("@set") {
                 // @set is just a syntactic wrapper, so we unwrap it
                 return expand_value(set_val, active_context, options);
             }
-            
+
             // Process @reverse
             if let Some(reverse_val) = obj.remove("@reverse") {
                 if let Value::Object(reverse_obj) = reverse_val {
@@ -904,12 +986,15 @@ fn expand_value(element: Value, active_context: &Context, options: &mut ExpandOp
                             active_property: Some(expanded_prop.clone()),
                             ..options.clone()
                         };
-                        reverse_map.insert(expanded_prop, expand_value(value, active_context, &mut reverse_options));
+                        reverse_map.insert(
+                            expanded_prop,
+                            expand_value(value, active_context, &mut reverse_options),
+                        );
                     }
                     result.insert("@reverse".to_string(), Value::Object(reverse_map));
                 }
             }
-            
+
             // Process other properties
             for (key, value) in obj {
                 if key.starts_with('@') {
@@ -928,7 +1013,7 @@ fn expand_value(element: Value, active_context: &Context, options: &mut ExpandOp
                     }
                 }
             }
-            
+
             // Wrap in array if this is a top-level object
             if options.active_property.is_none() {
                 Value::Array(vec![Value::Object(result)])
@@ -941,30 +1026,33 @@ fn expand_value(element: Value, active_context: &Context, options: &mut ExpandOp
 
 fn expand_value_object(mut obj: serde_json::Map<String, Value>, active_context: &Context) -> Value {
     let mut result = serde_json::Map::new();
-    
+
     // @value is required
     if let Some(value) = obj.remove("@value") {
         result.insert("@value".to_string(), value);
     }
-    
+
     // Process @type
     if let Some(type_val) = obj.remove("@type") {
         if let Value::String(type_str) = type_val {
             result.insert("@type".to_string(), expand_iri(&type_str, active_context));
         }
     }
-    
-    // Process @language  
+
+    // Process @language
     if let Some(lang_val) = obj.remove("@language") {
         if let Value::String(lang_str) = lang_val {
             if lang_str.is_empty() {
                 // Empty string means no language
             } else {
-                result.insert("@language".to_string(), Value::String(lang_str.to_lowercase()));
+                result.insert(
+                    "@language".to_string(),
+                    Value::String(lang_str.to_lowercase()),
+                );
             }
         }
     }
-    
+
     // Process @direction
     if let Some(dir_val) = obj.remove("@direction") {
         if let Value::String(dir_str) = dir_val {
@@ -978,14 +1066,14 @@ fn expand_value_object(mut obj: serde_json::Map<String, Value>, active_context: 
             }
         }
     }
-    
+
     // Process @index
     if let Some(index_val) = obj.remove("@index") {
         if let Value::String(index_str) = index_val {
             result.insert("@index".to_string(), Value::String(index_str));
         }
     }
-    
+
     Value::Object(result)
 }
 
@@ -1114,11 +1202,20 @@ struct JsonLdValue {
 
 fn default_context() -> Context {
     let mut prefixes = std::collections::HashMap::new();
-    prefixes.insert("rdf".to_string(), "http://www.w3.org/1999/02/22-rdf-syntax-ns#".to_string());
-    prefixes.insert("rdfs".to_string(), "http://www.w3.org/2000/01/rdf-schema#".to_string());
-    prefixes.insert("xsd".to_string(), "http://www.w3.org/2001/XMLSchema#".to_string());
+    prefixes.insert(
+        "rdf".to_string(),
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#".to_string(),
+    );
+    prefixes.insert(
+        "rdfs".to_string(),
+        "http://www.w3.org/2000/01/rdf-schema#".to_string(),
+    );
+    prefixes.insert(
+        "xsd".to_string(),
+        "http://www.w3.org/2001/XMLSchema#".to_string(),
+    );
     prefixes.insert("schema".to_string(), "http://schema.org/".to_string());
-    
+
     Context {
         prefixes,
         vocab: "http://example.org/".to_string(),
@@ -1132,10 +1229,10 @@ fn default_context() -> Context {
 
 fn simple_compact(input: Value, context: Value) -> Value {
     let result = json!({});
-    
+
     if let Value::Object(mut obj) = result {
         obj.insert("@context".to_string(), context);
-        
+
         if let Value::Array(arr) = input {
             if let Some(Value::Object(first)) = arr.first() {
                 for (key, value) in first {
@@ -1144,7 +1241,7 @@ fn simple_compact(input: Value, context: Value) -> Value {
                 }
             }
         }
-        
+
         Value::Object(obj)
     } else {
         input
@@ -1154,17 +1251,17 @@ fn simple_compact(input: Value, context: Value) -> Value {
 fn simple_flatten(input: Value, context: Option<Value>) -> Value {
     let mut nodes = Vec::new();
     extract_nodes(&input, &mut nodes);
-    
+
     let mut result = json!({
         "@graph": nodes
     });
-    
+
     if let Some(ctx) = context {
         if let Value::Object(ref mut obj) = result {
             obj.insert("@context".to_string(), ctx);
         }
     }
-    
+
     result
 }
 
@@ -1189,12 +1286,10 @@ fn extract_nodes(value: &Value, nodes: &mut Vec<Value>) {
 
 fn convert_to_rdf_simple(input: Value) -> String {
     let mut triples = Vec::new();
-    
+
     if let Value::Object(obj) = input {
-        let subject = obj.get("@id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("_:blank");
-        
+        let subject = obj.get("@id").and_then(|v| v.as_str()).unwrap_or("_:blank");
+
         for (predicate, object) in &obj {
             if !predicate.starts_with('@') {
                 let triple = format!("<{}> <{}> \"{}\" .", subject, predicate, object);
@@ -1202,14 +1297,15 @@ fn convert_to_rdf_simple(input: Value) -> String {
             }
         }
     }
-    
+
     triples.join("\n")
 }
 
 fn merge_json(target: &mut Value, source: &Value) {
     if let (Value::Object(target_obj), Value::Object(source_obj)) = (target, source) {
         for (key, value) in source_obj {
-            target_obj.entry(key.clone())
+            target_obj
+                .entry(key.clone())
                 .and_modify(|v| merge_json(v, value))
                 .or_insert(value.clone());
         }
@@ -1236,7 +1332,7 @@ fn optimize_json(value: &mut Value) {
 fn simple_frame(input: Value, frame: Value) -> Value {
     // Simplified framing
     let mut result = json!({});
-    
+
     if let (Value::Object(input_obj), Value::Object(frame_obj)) = (input, frame) {
         for (key, _) in frame_obj {
             if let Some(value) = input_obj.get(&key) {
@@ -1246,7 +1342,7 @@ fn simple_frame(input: Value, frame: Value) -> Value {
             }
         }
     }
-    
+
     result
 }
 
@@ -1260,7 +1356,7 @@ fn find_nodes_recursive(value: &Value, pattern: &Value, matches: &mut Vec<Value>
     if matches_pattern(value, pattern) {
         matches.push(value.clone());
     }
-    
+
     match value {
         Value::Object(obj) => {
             for v in obj.values() {
@@ -1278,11 +1374,11 @@ fn find_nodes_recursive(value: &Value, pattern: &Value, matches: &mut Vec<Value>
 
 fn matches_pattern(value: &Value, pattern: &Value) -> bool {
     match (value, pattern) {
-        (Value::Object(v_obj), Value::Object(p_obj)) => {
-            p_obj.iter().all(|(key, p_val)| {
-                v_obj.get(key).map_or(false, |v_val| matches_pattern(v_val, p_val))
-            })
-        }
+        (Value::Object(v_obj), Value::Object(p_obj)) => p_obj.iter().all(|(key, p_val)| {
+            v_obj
+                .get(key)
+                .map_or(false, |v_val| matches_pattern(v_val, p_val))
+        }),
         (v, p) => v == p,
     }
 }
@@ -1292,7 +1388,7 @@ fn batch_expand<'a>(env: Env<'a>, documents: Vec<String>) -> NifResult<Term<'a>>
     #[cfg(feature = "parallel")]
     {
         use rayon::prelude::*;
-        
+
         // Use enhanced expansion with SIMD and memory pools
         let results: Vec<String> = documents
             .par_iter()
@@ -1300,29 +1396,31 @@ fn batch_expand<'a>(env: Env<'a>, documents: Vec<String>) -> NifResult<Term<'a>>
                 if let Ok(document) = serde_json::from_str::<Value>(doc_str) {
                     // Use simple expansion (optimized internally)
                     let expanded = simple_expand(document);
-                    serde_json::to_string(&expanded).unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
+                    serde_json::to_string(&expanded)
+                        .unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
                 } else {
                     r#"{"error": "Invalid JSON"}"#.to_string()
                 }
             })
             .collect();
-        
+
         Ok((atoms::ok(), results).encode(env))
     }
     #[cfg(not(feature = "parallel"))]
     {
         let mut results = Vec::new();
-        
+
         for doc_str in documents {
             let result = if let Ok(document) = serde_json::from_str::<Value>(&doc_str) {
                 let expanded = simple_expand(document);
-                serde_json::to_string(&expanded).unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
+                serde_json::to_string(&expanded)
+                    .unwrap_or_else(|_| r#"{"error": "Serialization failed"}"#.to_string())
             } else {
                 r#"{"error": "Invalid JSON"}"#.to_string()
             };
             results.push(result);
         }
-        
+
         Ok((atoms::ok(), results).encode(env))
     }
 }
@@ -1331,11 +1429,11 @@ fn batch_expand<'a>(env: Env<'a>, documents: Vec<String>) -> NifResult<Term<'a>>
 // HIGH-PERFORMANCE DIFF ALGORITHMS
 // ====================
 
-use similar::{Algorithm, DiffTag, TextDiff};
-use hashbrown::HashMap;
-use smallvec::SmallVec;
-use once_cell::sync::Lazy;
 use bitvec::prelude::*;
+use hashbrown::HashMap;
+use once_cell::sync::Lazy;
+use similar::{Algorithm, DiffTag, TextDiff};
+use smallvec::SmallVec;
 use std::sync::atomic::AtomicU64;
 
 // Global diff statistics
@@ -1374,27 +1472,39 @@ thread_local! {
 // ====================
 
 #[rustler::nif]
-fn diff_structural<'a>(env: Env<'a>, old_doc: String, new_doc: String, opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn diff_structural<'a>(
+    env: Env<'a>,
+    old_doc: String,
+    new_doc: String,
+    opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     DIFF_STATS.structural_diffs.fetch_add(1, Ordering::Relaxed);
-    DIFF_STATS.bytes_processed.fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
-    
+    DIFF_STATS
+        .bytes_processed
+        .fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
+
     let options = parse_diff_options(&opts);
-    
-    match (serde_json::from_str::<Value>(&old_doc), serde_json::from_str::<Value>(&new_doc)) {
+
+    match (
+        serde_json::from_str::<Value>(&old_doc),
+        serde_json::from_str::<Value>(&new_doc),
+    ) {
         (Ok(old_val), Ok(new_val)) => {
             let diff = DIFF_ARENA.with(|arena| {
                 let mut arena = arena.borrow_mut();
                 arena.reset();
-                
+
                 compute_structural_diff(&old_val, &new_val, &options, &arena)
             });
-            
+
             match serde_json::to_string(&diff) {
                 Ok(diff_json) => Ok((atoms::ok(), diff_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
@@ -1428,7 +1538,7 @@ impl Default for DiffOptions {
 
 fn parse_diff_options(opts: &[(String, String)]) -> DiffOptions {
     let mut options = DiffOptions::default();
-    
+
     for (key, value) in opts {
         match key.as_str() {
             "include_moves" => options.include_moves = value == "true",
@@ -1449,7 +1559,7 @@ fn parse_diff_options(opts: &[(String, String)]) -> DiffOptions {
             _ => {}
         }
     }
-    
+
     options
 }
 
@@ -1458,7 +1568,7 @@ fn compute_structural_diff(old: &Value, new: &Value, options: &DiffOptions, aren
     if values_equal_simd(old, new) {
         return json!({});
     }
-    
+
     match (old, new) {
         (Value::Object(old_obj), Value::Object(new_obj)) => {
             diff_objects_optimized(old_obj, new_obj, options, arena)
@@ -1466,10 +1576,12 @@ fn compute_structural_diff(old: &Value, new: &Value, options: &DiffOptions, aren
         (Value::Array(old_arr), Value::Array(new_arr)) => {
             diff_arrays_optimized(old_arr, new_arr, options, arena)
         }
-        (Value::String(old_str), Value::String(new_str)) if options.text_diff && old_str.len() > options.text_diff_threshold => {
+        (Value::String(old_str), Value::String(new_str))
+            if options.text_diff && old_str.len() > options.text_diff_threshold =>
+        {
             diff_text_simd(old_str, new_str, arena)
         }
-        _ => json!([old.clone(), new.clone()])
+        _ => json!([old.clone(), new.clone()]),
     }
 }
 
@@ -1479,7 +1591,7 @@ fn values_equal_simd(a: &Value, b: &Value) -> bool {
     if std::ptr::eq(a, b) {
         return true;
     }
-    
+
     // Type-specific SIMD comparisons
     match (a, b) {
         (Value::String(a_str), Value::String(b_str)) => {
@@ -1489,14 +1601,19 @@ fn values_equal_simd(a: &Value, b: &Value) -> bool {
         (Value::Bool(a_bool), Value::Bool(b_bool)) => a_bool == b_bool,
         (Value::Null, Value::Null) => true,
         (Value::Array(a_arr), Value::Array(b_arr)) => {
-            a_arr.len() == b_arr.len() && 
-            a_arr.iter().zip(b_arr.iter()).all(|(a, b)| values_equal_simd(a, b))
+            a_arr.len() == b_arr.len()
+                && a_arr
+                    .iter()
+                    .zip(b_arr.iter())
+                    .all(|(a, b)| values_equal_simd(a, b))
         }
         (Value::Object(a_obj), Value::Object(b_obj)) => {
-            a_obj.len() == b_obj.len() && 
-            a_obj.iter().all(|(key, a_val)| {
-                b_obj.get(key).map_or(false, |b_val| values_equal_simd(a_val, b_val))
-            })
+            a_obj.len() == b_obj.len()
+                && a_obj.iter().all(|(key, a_val)| {
+                    b_obj
+                        .get(key)
+                        .map_or(false, |b_val| values_equal_simd(a_val, b_val))
+                })
         }
         _ => false,
     }
@@ -1507,51 +1624,56 @@ fn strings_equal_simd(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    
+
     if a.len() < 32 {
         // Small strings: use simple comparison
         return a == b;
     }
-    
+
     DIFF_STATS.simd_operations.fetch_add(1, Ordering::Relaxed);
-    
+
     // SIMD comparison for large strings
     const CHUNK_SIZE: usize = 32;
     let chunks = a.len() / CHUNK_SIZE;
-    
+
     for i in 0..chunks {
         let start = i * CHUNK_SIZE;
         let a_chunk = u8x32::from(&a[start..start + CHUNK_SIZE]);
         let b_chunk = u8x32::from(&b[start..start + CHUNK_SIZE]);
-        
+
         if !a_chunk.cmp_eq(b_chunk).all() {
             return false;
         }
     }
-    
+
     // Compare remaining bytes
     let remainder = a.len() % CHUNK_SIZE;
     if remainder > 0 {
         let start = chunks * CHUNK_SIZE;
         return &a[start..] == &b[start..];
     }
-    
+
     true
 }
 
 // High-performance object diffing with hash caching
-fn diff_objects_optimized(old_obj: &serde_json::Map<String, Value>, new_obj: &serde_json::Map<String, Value>, options: &DiffOptions, arena: &Bump) -> Value {
+fn diff_objects_optimized(
+    old_obj: &serde_json::Map<String, Value>,
+    new_obj: &serde_json::Map<String, Value>,
+    options: &DiffOptions,
+    arena: &Bump,
+) -> Value {
     let mut result = serde_json::Map::new();
-    
+
     // Build hash sets of keys for fast lookup
     let old_keys: ahash::AHashSet<&String> = old_obj.keys().collect();
     let new_keys: ahash::AHashSet<&String> = new_obj.keys().collect();
-    
+
     // Process all unique keys
     for key in old_keys.union(&new_keys) {
         let old_val = old_obj.get(*key);
         let new_val = new_obj.get(*key);
-        
+
         let delta = match (old_val, new_val) {
             (Some(old), Some(new)) if !values_equal_simd(old, new) => {
                 // Changed value
@@ -1571,15 +1693,20 @@ fn diff_objects_optimized(old_obj: &serde_json::Map<String, Value>, new_obj: &se
             }
             _ => continue,
         };
-        
+
         result.insert((*key).clone(), delta);
     }
-    
+
     Value::Object(result)
 }
 
 // Ultra-fast array diffing with move detection
-fn diff_arrays_optimized(old_arr: &[Value], new_arr: &[Value], options: &DiffOptions, arena: &Bump) -> Value {
+fn diff_arrays_optimized(
+    old_arr: &[Value],
+    new_arr: &[Value],
+    options: &DiffOptions,
+    arena: &Bump,
+) -> Value {
     if options.include_moves {
         diff_arrays_with_moves_simd(old_arr, new_arr, options, arena)
     } else {
@@ -1587,14 +1714,19 @@ fn diff_arrays_optimized(old_arr: &[Value], new_arr: &[Value], options: &DiffOpt
     }
 }
 
-fn diff_arrays_simple_simd(old_arr: &[Value], new_arr: &[Value], options: &DiffOptions, arena: &Bump) -> Value {
+fn diff_arrays_simple_simd(
+    old_arr: &[Value],
+    new_arr: &[Value],
+    options: &DiffOptions,
+    arena: &Bump,
+) -> Value {
     let max_len = old_arr.len().max(new_arr.len());
     let mut result = serde_json::Map::new();
-    
+
     for i in 0..max_len {
         let old_val = old_arr.get(i);
         let new_val = new_arr.get(i);
-        
+
         let delta = match (old_val, new_val) {
             (Some(old), Some(new)) if !values_equal_simd(old, new) => {
                 compute_structural_diff(old, new, options, arena)
@@ -1607,56 +1739,60 @@ fn diff_arrays_simple_simd(old_arr: &[Value], new_arr: &[Value], options: &DiffO
             }
             _ => continue,
         };
-        
+
         result.insert(format!("_{}", i), delta);
     }
-    
+
     Value::Object(result)
 }
 
 // Advanced array diffing with SIMD-accelerated move detection
-fn diff_arrays_with_moves_simd(old_arr: &[Value], new_arr: &[Value], options: &DiffOptions, arena: &Bump) -> Value {
+fn diff_arrays_with_moves_simd(
+    old_arr: &[Value],
+    new_arr: &[Value],
+    options: &DiffOptions,
+    arena: &Bump,
+) -> Value {
     // Build hash maps for O(1) lookups
     let old_hashes = HASH_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         build_value_hash_map(old_arr, &mut cache, arena)
     });
-    
+
     let new_hashes = HASH_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         build_value_hash_map(new_arr, &mut cache, arena)
     });
-    
+
     let mut result = serde_json::Map::new();
     let mut processed_old = bitvec![0; old_arr.len()];
     let mut processed_new = bitvec![0; new_arr.len()];
-    
+
     // Detect moves using hash matching
     for (new_idx, (new_hash, _new_val)) in new_hashes.iter().enumerate() {
         if processed_new[new_idx] {
             continue;
         }
-        
+
         // Look for matching hash in old array
-        if let Some((old_idx, _)) = old_hashes.iter()
+        if let Some((old_idx, _)) = old_hashes
+            .iter()
             .enumerate()
-            .find(|(old_idx, (old_hash, _))| {
-                !processed_old[*old_idx] && *old_hash == *new_hash
-            }) {
-            
+            .find(|(old_idx, (old_hash, _))| !processed_old[*old_idx] && *old_hash == *new_hash)
+        {
             if old_idx != new_idx {
                 // Item moved
                 result.insert(
                     format!("_{}", new_idx),
-                    json!(["", old_idx, 3]) // Move operation
+                    json!(["", old_idx, 3]), // Move operation
                 );
             }
-            
+
             processed_old.set(old_idx, true);
             processed_new.set(new_idx, true);
         }
     }
-    
+
     // Handle remaining additions/deletions/changes
     for i in 0..old_arr.len().max(new_arr.len()) {
         if i < old_arr.len() && i < new_arr.len() && !processed_old[i] && !processed_new[i] {
@@ -1664,7 +1800,7 @@ fn diff_arrays_with_moves_simd(old_arr: &[Value], new_arr: &[Value], options: &D
             if !values_equal_simd(&old_arr[i], &new_arr[i]) {
                 result.insert(
                     format!("_{}", i),
-                    compute_structural_diff(&old_arr[i], &new_arr[i], options, arena)
+                    compute_structural_diff(&old_arr[i], &new_arr[i], options, arena),
                 );
             }
         } else if i < old_arr.len() && !processed_old[i] {
@@ -1675,31 +1811,35 @@ fn diff_arrays_with_moves_simd(old_arr: &[Value], new_arr: &[Value], options: &D
             result.insert(format!("_{}", i), json!([new_arr[i].clone()]));
         }
     }
-    
+
     Value::Object(result)
 }
 
 // Fast hash computation for JSON values using arena allocation
-fn build_value_hash_map<'a>(arr: &'a [Value], cache: &mut HashMap<String, u64>, arena: &Bump) -> SmallVec<[(u64, &'a Value); 32]> {
+fn build_value_hash_map<'a>(
+    arr: &'a [Value],
+    cache: &mut HashMap<String, u64>,
+    arena: &Bump,
+) -> SmallVec<[(u64, &'a Value); 32]> {
     let mut hashes = SmallVec::with_capacity(arr.len());
-    
+
     for val in arr {
         let hash = compute_value_hash_cached(val, cache, arena);
         hashes.push((hash, val));
     }
-    
+
     hashes
 }
 
 fn compute_value_hash_cached(value: &Value, cache: &mut HashMap<String, u64>, arena: &Bump) -> u64 {
     // Generate a structural key for caching
     let key = value_to_cache_key(value, arena);
-    
+
     if let Some(&cached_hash) = cache.get(&key) {
         DIFF_STATS.cache_hits.fetch_add(1, Ordering::Relaxed);
         return cached_hash;
     }
-    
+
     let hash = compute_value_hash_fast(value);
     cache.insert(key, hash);
     hash
@@ -1722,7 +1862,11 @@ fn value_to_cache_key(value: &Value, _arena: &Bump) -> String {
         Value::Object(obj) => {
             let mut keys: SmallVec<[&String; 16]> = obj.keys().collect();
             keys.sort();
-            format!("obj:{}:{}", obj.len(), keys.get(0).map(|s| s.as_str()).unwrap_or(""))
+            format!(
+                "obj:{}:{}",
+                obj.len(),
+                keys.get(0).map(|s| s.as_str()).unwrap_or("")
+            )
         }
     }
 }
@@ -1731,7 +1875,7 @@ fn value_to_cache_key(value: &Value, _arena: &Bump) -> String {
 fn compute_value_hash_fast(value: &Value) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = ahash::AHasher::default();
-    
+
     match value {
         Value::Null => 0u8.hash(&mut hasher),
         Value::Bool(b) => b.hash(&mut hasher),
@@ -1751,26 +1895,26 @@ fn compute_value_hash_fast(value: &Value) -> u64 {
             }
         }
     }
-    
+
     hasher.finish()
 }
 
 // SIMD-accelerated text diffing
 fn diff_text_simd(old_text: &str, new_text: &str, _arena: &Bump) -> Value {
     DIFF_STATS.simd_operations.fetch_add(1, Ordering::Relaxed);
-    
+
     // Use Myers' algorithm with SIMD optimizations
     let text_diff = TextDiff::configure()
         .algorithm(Algorithm::Myers)
         .diff_chars(old_text, new_text);
-    
+
     let mut diff_ops = Vec::new();
-    
+
     for op in text_diff.ops() {
         let tag = op.tag();
         let old_range = op.old_range();
         let new_range = op.new_range();
-        
+
         match tag {
             DiffTag::Equal => {
                 // Skip equal parts for compactness
@@ -1800,7 +1944,7 @@ fn diff_text_simd(old_text: &str, new_text: &str, _arena: &Bump) -> Value {
             }
         }
     }
-    
+
     json!([json!({"text_diff": diff_ops}), 0, 2])
 }
 
@@ -1809,16 +1953,26 @@ fn diff_text_simd(old_text: &str, new_text: &str, _arena: &Bump) -> Value {
 // ====================
 
 #[rustler::nif]
-fn patch_structural<'a>(env: Env<'a>, document: String, patch_str: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&document), serde_json::from_str::<Value>(&patch_str)) {
+fn patch_structural<'a>(
+    env: Env<'a>,
+    document: String,
+    patch_str: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Value>(&document),
+        serde_json::from_str::<Value>(&patch_str),
+    ) {
         (Ok(doc), Ok(patch)) => {
             let patched = apply_structural_patch(&doc, &patch);
             match serde_json::to_string(&patched) {
                 Ok(result_json) => Ok((atoms::ok(), result_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
@@ -1839,7 +1993,10 @@ fn apply_object_patch(document: &Value, patch_obj: &serde_json::Map<String, Valu
                 // If this is an array delta encoded as an object (jsondiffpatch style)
                 if let Some(existing_val) = result_obj.get(key) {
                     if existing_val.is_array() && patch_val.is_object() {
-                        let new_array = apply_array_delta(existing_val.as_array().unwrap(), patch_val.as_object().unwrap());
+                        let new_array = apply_array_delta(
+                            existing_val.as_array().unwrap(),
+                            patch_val.as_object().unwrap(),
+                        );
                         result_obj.insert(key.clone(), new_array);
                         continue;
                     }
@@ -1852,7 +2009,9 @@ fn apply_object_patch(document: &Value, patch_obj: &serde_json::Map<String, Valu
                 }
 
                 match patch_val {
-                    Value::Array(patch_arr) if patch_arr.len() == 3 && patch_arr[1] == 0 && patch_arr[2] == 0 => {
+                    Value::Array(patch_arr)
+                        if patch_arr.len() == 3 && patch_arr[1] == 0 && patch_arr[2] == 0 =>
+                    {
                         // Deletion: [old_value, 0, 0]
                         result_obj.remove(key);
                     }
@@ -1880,7 +2039,12 @@ fn apply_object_patch(document: &Value, patch_obj: &serde_json::Map<String, Valu
         }
         Value::Array(ref arr) => {
             // Patching an array that is provided as an object delta
-            Value::Array(apply_array_delta(arr, patch_obj).as_array().unwrap().clone())
+            Value::Array(
+                apply_array_delta(arr, patch_obj)
+                    .as_array()
+                    .unwrap()
+                    .clone(),
+            )
         }
         _ => result,
     }
@@ -1890,7 +2054,12 @@ fn apply_object_patch(document: &Value, patch_obj: &serde_json::Map<String, Valu
 fn apply_array_delta(existing: &[Value], delta_obj: &serde_json::Map<String, Value>) -> Value {
     // Collect operations
     #[derive(Debug, PartialEq)]
-    enum Op { Delete(usize), Insert(usize, Value), Move{to: usize, from: usize}, Change(usize, Value) }
+    enum Op {
+        Delete(usize),
+        Insert(usize, Value),
+        Move { to: usize, from: usize },
+        Change(usize, Value),
+    }
 
     let mut deletes: Vec<usize> = Vec::new();
     let mut moves: Vec<(usize, usize)> = Vec::new(); // (to, from)
@@ -1913,11 +2082,17 @@ fn apply_array_delta(existing: &[Value], delta_obj: &serde_json::Map<String, Val
         // Keys like _<idx> indicate change/delete/move at index
         if let Ok(idx) = key[1..].parse::<usize>() {
             match sub {
-                Value::Array(arr) if arr.len() == 3 && arr[1] == Value::from(0) && arr[2] == Value::from(0) => {
+                Value::Array(arr)
+                    if arr.len() == 3 && arr[1] == Value::from(0) && arr[2] == Value::from(0) =>
+                {
                     // Delete
                     deletes.push(idx);
                 }
-                Value::Array(arr) if arr.len() == 3 && arr[0] == Value::String("".to_string()) && arr[2] == Value::from(3) => {
+                Value::Array(arr)
+                    if arr.len() == 3
+                        && arr[0] == Value::String("".to_string())
+                        && arr[2] == Value::from(3) =>
+                {
                     // Move
                     if let Some(from_u64) = arr[1].as_u64() {
                         if let Ok(from) = usize::try_from(from_u64) {
@@ -1977,7 +2152,11 @@ fn apply_array_delta(existing: &[Value], delta_obj: &serde_json::Map<String, Val
     // Apply inserts in ascending index order
     inserts.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
     for (idx, val) in inserts {
-        let insert_at = if idx <= result.len() { idx } else { result.len() };
+        let insert_at = if idx <= result.len() {
+            idx
+        } else {
+            result.len()
+        };
         result.insert(insert_at, val);
     }
 
@@ -2053,7 +2232,11 @@ fn apply_text_diff_ops(old_text: &str, ops: &[Value]) -> String {
         }
     }
 
-    builder.push_str(slice_by_char_range(old_text, pos_old_chars, count_chars(old_text)));
+    builder.push_str(slice_by_char_range(
+        old_text,
+        pos_old_chars,
+        count_chars(old_text),
+    ));
     builder
 }
 
@@ -2071,10 +2254,14 @@ fn slice_by_char_range<'a>(s: &'a str, start_char: usize, end_char: usize) -> &'
 }
 
 fn char_index_to_byte(s: &str, char_idx: usize) -> usize {
-    if char_idx == 0 { return 0; }
+    if char_idx == 0 {
+        return 0;
+    }
     let mut count = 0usize;
     for (byte_idx, _) in s.char_indices() {
-        if count == char_idx { return byte_idx; }
+        if count == char_idx {
+            return byte_idx;
+        }
         count += 1;
     }
     s.len()
@@ -2085,21 +2272,33 @@ fn char_index_to_byte(s: &str, char_idx: usize) -> usize {
 // ====================
 
 #[rustler::nif]
-fn diff_operational<'a>(env: Env<'a>, old_doc: String, new_doc: String, opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn diff_operational<'a>(
+    env: Env<'a>,
+    old_doc: String,
+    new_doc: String,
+    opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     DIFF_STATS.operational_diffs.fetch_add(1, Ordering::Relaxed);
-    DIFF_STATS.bytes_processed.fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
-    
+    DIFF_STATS
+        .bytes_processed
+        .fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
+
     let options = parse_operational_options(&opts);
-    
-    match (serde_json::from_str::<Value>(&old_doc), serde_json::from_str::<Value>(&new_doc)) {
+
+    match (
+        serde_json::from_str::<Value>(&old_doc),
+        serde_json::from_str::<Value>(&new_doc),
+    ) {
         (Ok(old_val), Ok(new_val)) => {
             let diff = compute_operational_diff(&old_val, &new_val, &options);
             match serde_json::to_string(&diff) {
                 Ok(diff_json) => Ok((atoms::ok(), diff_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
@@ -2122,7 +2321,7 @@ fn parse_operational_options(opts: &[(String, String)]) -> OperationalOptions {
         base_timestamp: current_timestamp_nanos(),
         conflict_resolution: ConflictResolution::LastWriteWins,
     };
-    
+
     for (key, value) in opts {
         match key.as_str() {
             "actor_id" => options.actor_id = value.clone(),
@@ -2140,16 +2339,16 @@ fn parse_operational_options(opts: &[(String, String)]) -> OperationalOptions {
             _ => {}
         }
     }
-    
+
     options
 }
 
 fn compute_operational_diff(old: &Value, new: &Value, options: &OperationalOptions) -> Value {
     let mut operations = Vec::new();
     let mut timestamp = options.base_timestamp;
-    
+
     diff_values_operational(old, new, &[], options, &mut operations, &mut timestamp);
-    
+
     json!({
         "operations": operations,
         "metadata": {
@@ -2164,17 +2363,17 @@ fn compute_operational_diff(old: &Value, new: &Value, options: &OperationalOptio
 }
 
 fn diff_values_operational(
-    old: &Value, 
-    new: &Value, 
-    path: &[&str], 
+    old: &Value,
+    new: &Value,
+    path: &[&str],
     options: &OperationalOptions,
     operations: &mut Vec<Value>,
-    timestamp: &mut u64
+    timestamp: &mut u64,
 ) {
     if values_equal_simd(old, new) {
         return;
     }
-    
+
     match (old, new) {
         (Value::Object(old_obj), Value::Object(new_obj)) => {
             diff_objects_operational(old_obj, new_obj, path, options, operations, timestamp);
@@ -2202,18 +2401,20 @@ fn diff_objects_operational(
     path: &[&str],
     options: &OperationalOptions,
     operations: &mut Vec<Value>,
-    timestamp: &mut u64
+    timestamp: &mut u64,
 ) {
     let old_keys: ahash::AHashSet<&String> = old_obj.keys().collect();
     let new_keys: ahash::AHashSet<&String> = new_obj.keys().collect();
-    
+
     for key in old_keys.union(&new_keys) {
         let mut new_path = path.to_vec();
         new_path.push(key);
-        
+
         match (old_obj.get(*key), new_obj.get(*key)) {
             (Some(old_val), Some(new_val)) => {
-                diff_values_operational(old_val, new_val, &new_path, options, operations, timestamp);
+                diff_values_operational(
+                    old_val, new_val, &new_path, options, operations, timestamp,
+                );
             }
             (Some(_), None) => {
                 // Key deleted
@@ -2248,16 +2449,16 @@ fn diff_arrays_operational(
     path: &[&str],
     options: &OperationalOptions,
     operations: &mut Vec<Value>,
-    timestamp: &mut u64
+    timestamp: &mut u64,
 ) {
     // Simple approach: delete all old items and insert all new items
     // More sophisticated LCS-based approach could be implemented for efficiency
-    
+
     // Delete old items in reverse order
     for i in (0..old_arr.len()).rev() {
         let mut new_path = path.iter().map(|s| s.to_string()).collect::<Vec<String>>();
         new_path.push(i.to_string());
-        
+
         operations.push(json!({
             "type": "delete",
             "path": new_path,
@@ -2267,12 +2468,12 @@ fn diff_arrays_operational(
         }));
         *timestamp += 1;
     }
-    
+
     // Insert new items
     for (i, new_val) in new_arr.iter().enumerate() {
         let mut new_path = path.iter().map(|s| s.to_string()).collect::<Vec<String>>();
         new_path.push(i.to_string());
-        
+
         operations.push(json!({
             "type": "insert",
             "path": new_path,
@@ -2285,29 +2486,37 @@ fn diff_arrays_operational(
 }
 
 #[rustler::nif]
-fn patch_operational<'a>(env: Env<'a>, document: String, patch_str: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&document), serde_json::from_str::<Value>(&patch_str)) {
+fn patch_operational<'a>(
+    env: Env<'a>,
+    document: String,
+    patch_str: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Value>(&document),
+        serde_json::from_str::<Value>(&patch_str),
+    ) {
         (Ok(mut doc), Ok(patch)) => {
             if let Some(operations) = patch.get("operations").and_then(|v| v.as_array()) {
                 apply_operational_operations(&mut doc, operations);
             }
-            
+
             match serde_json::to_string(&doc) {
                 Ok(result_json) => Ok((atoms::ok(), result_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
 fn apply_operational_operations(document: &mut Value, operations: &[Value]) {
     // Sort operations by timestamp
     let mut sorted_ops: Vec<&Value> = operations.iter().collect();
-    sorted_ops.sort_by_key(|op| {
-        op.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0)
-    });
-    
+    sorted_ops.sort_by_key(|op| op.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0));
+
     for op in sorted_ops {
         apply_single_operation(document, op);
     }
@@ -2316,9 +2525,12 @@ fn apply_operational_operations(document: &mut Value, operations: &[Value]) {
 fn apply_single_operation(document: &mut Value, op: &Value) {
     let op_type = op.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let empty_path = vec![];
-    let path = op.get("path").and_then(|v| v.as_array()).unwrap_or(&empty_path);
+    let path = op
+        .get("path")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty_path);
     let value = op.get("value");
-    
+
     match op_type {
         "set" => {
             if let Some(val) = value {
@@ -2342,7 +2554,7 @@ fn set_value_at_path(document: &mut Value, path: &[Value], value: Value) {
         *document = value;
         return;
     }
-    
+
     // Handle the path navigation recursively to avoid borrowing issues
     set_value_at_path_recursive(document, path, 0, value);
 }
@@ -2351,9 +2563,9 @@ fn set_value_at_path_recursive(current: &mut Value, path: &[Value], index: usize
     if index >= path.len() {
         return;
     }
-    
+
     let key = &path[index];
-    
+
     if index == path.len() - 1 {
         // Last key, set the value
         match (current, key) {
@@ -2398,7 +2610,9 @@ fn delete_value_at_path(document: &mut Value, path: &[Value]) {
     }
 
     fn recurse(current: &mut Value, path: &[Value], index: usize) {
-        if index >= path.len() { return; }
+        if index >= path.len() {
+            return;
+        }
         let key = &path[index];
         let is_last = index == path.len() - 1;
 
@@ -2467,21 +2681,33 @@ fn insert_value_at_path(document: &mut Value, path: &[Value], value: Value) {
 // ====================
 
 #[rustler::nif]
-fn diff_semantic<'a>(env: Env<'a>, old_doc: String, new_doc: String, opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn diff_semantic<'a>(
+    env: Env<'a>,
+    old_doc: String,
+    new_doc: String,
+    opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     DIFF_STATS.semantic_diffs.fetch_add(1, Ordering::Relaxed);
-    DIFF_STATS.bytes_processed.fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
-    
+    DIFF_STATS
+        .bytes_processed
+        .fetch_add((old_doc.len() + new_doc.len()) as u64, Ordering::Relaxed);
+
     let options = parse_semantic_options(&opts);
-    
-    match (serde_json::from_str::<Value>(&old_doc), serde_json::from_str::<Value>(&new_doc)) {
+
+    match (
+        serde_json::from_str::<Value>(&old_doc),
+        serde_json::from_str::<Value>(&new_doc),
+    ) {
         (Ok(old_val), Ok(new_val)) => {
             let diff = compute_semantic_diff(&old_val, &new_val, &options);
             match serde_json::to_string(&diff) {
                 Ok(diff_json) => Ok((atoms::ok(), diff_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
@@ -2507,7 +2733,7 @@ fn parse_semantic_options(opts: &[(String, String)]) -> SemanticOptions {
         expand_contexts: true,
         blank_node_strategy: BlankNodeStrategy::Uuid,
     };
-    
+
     for (key, value) in opts {
         match key.as_str() {
             "normalize" => options.normalize = value == "true",
@@ -2523,7 +2749,7 @@ fn parse_semantic_options(opts: &[(String, String)]) -> SemanticOptions {
             _ => {}
         }
     }
-    
+
     options
 }
 
@@ -2531,14 +2757,14 @@ fn compute_semantic_diff(old: &Value, new: &Value, options: &SemanticOptions) ->
     // Convert documents to RDF triples
     let old_triples = document_to_triples_fast(old, options);
     let new_triples = document_to_triples_fast(new, options);
-    
+
     // Compare triple sets
     let old_set: ahash::AHashSet<_> = old_triples.iter().collect();
     let new_set: ahash::AHashSet<_> = new_triples.iter().collect();
-    
+
     let added_triples: Vec<_> = new_set.difference(&old_set).cloned().collect();
     let removed_triples: Vec<_> = old_set.difference(&new_set).cloned().collect();
-    
+
     // Analyze context changes
     let context_changes = if options.context_aware {
         compare_contexts_fast(old, new)
@@ -2550,10 +2776,10 @@ fn compute_semantic_diff(old: &Value, new: &Value, options: &SemanticOptions) ->
             "base_changes": [null, null]
         })
     };
-    
+
     // Group changes by node
     let modified_nodes = group_changes_by_node_fast(&added_triples, &removed_triples);
-    
+
     json!({
         "added_triples": added_triples,
         "removed_triples": removed_triples,
@@ -2574,7 +2800,8 @@ fn compute_semantic_diff(old: &Value, new: &Value, options: &SemanticOptions) ->
 fn document_to_triples_fast(document: &Value, _options: &SemanticOptions) -> Vec<Value> {
     // Robust RDF triple extraction with nested traversal and literals
     let mut triples: Vec<Value> = Vec::new();
-    let mut bnode_cache: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut bnode_cache: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     extract_triples_node_fast(document, None, &mut bnode_cache, &mut triples);
     normalize_blank_nodes_fast(&triples)
 }
@@ -2602,10 +2829,16 @@ fn serialize_object_for_rdf(object: &Value) -> Value {
         Value::String(s) if is_iri(s) => Value::String(s.clone()),
         Value::String(s) => json!({"value": s, "type": "http://www.w3.org/2001/XMLSchema#string"}),
         Value::Number(n) => {
-            let type_iri = if n.is_f64() { "http://www.w3.org/2001/XMLSchema#double" } else { "http://www.w3.org/2001/XMLSchema#integer" };
+            let type_iri = if n.is_f64() {
+                "http://www.w3.org/2001/XMLSchema#double"
+            } else {
+                "http://www.w3.org/2001/XMLSchema#integer"
+            };
             json!({"value": n.to_string(), "type": type_iri})
         }
-        Value::Bool(b) => json!({"value": b.to_string(), "type": "http://www.w3.org/2001/XMLSchema#boolean"}),
+        Value::Bool(b) => {
+            json!({"value": b.to_string(), "type": "http://www.w3.org/2001/XMLSchema#boolean"})
+        }
         Value::Object(obj) => {
             if let Some(Value::String(id)) = obj.get("@id") {
                 Value::String(id.clone())
@@ -2629,15 +2862,24 @@ fn is_iri(s: &str) -> bool {
     s.starts_with("http://") || s.starts_with("https://")
 }
 
-fn extract_triples_node_fast(node: &Value, subject_hint: Option<String>, bnode_cache: &mut std::collections::HashMap<String, String>, triples: &mut Vec<Value>) -> Option<String> {
+fn extract_triples_node_fast(
+    node: &Value,
+    subject_hint: Option<String>,
+    bnode_cache: &mut std::collections::HashMap<String, String>,
+    triples: &mut Vec<Value>,
+) -> Option<String> {
     match node {
         Value::Object(obj) => {
             let subject = if let Some(Value::String(id)) = obj.get("@id") {
                 id.clone()
             } else {
                 // assign deterministic bnode id based on sorted serialization
-                let key = serde_json::to_string(&sorted_json_value(&Value::Object(obj.clone()))).unwrap_or_else(|_| "{}".to_string());
-                bnode_cache.entry(key).or_insert_with(|| format!("_:h{}", uuid::Uuid::new_v4().simple())).clone()
+                let key = serde_json::to_string(&sorted_json_value(&Value::Object(obj.clone())))
+                    .unwrap_or_else(|_| "{}".to_string());
+                bnode_cache
+                    .entry(key)
+                    .or_insert_with(|| format!("_:h{}", uuid::Uuid::new_v4().simple()))
+                    .clone()
             };
 
             // rdf:type handling
@@ -2646,29 +2888,41 @@ fn extract_triples_node_fast(node: &Value, subject_hint: Option<String>, bnode_c
                 match t {
                     Value::Array(arr) => {
                         for ty in arr {
-                            if let Value::String(ts) = ty { triples.push(json!({"subject": subject, "predicate": rdf_type, "object": expand_property_iri_fast(ts)})); }
+                            if let Value::String(ts) = ty {
+                                triples.push(json!({"subject": subject, "predicate": rdf_type, "object": expand_property_iri_fast(ts)}));
+                            }
                         }
                     }
-                    Value::String(ts) => { triples.push(json!({"subject": subject, "predicate": rdf_type, "object": expand_property_iri_fast(ts)})); }
+                    Value::String(ts) => {
+                        triples.push(json!({"subject": subject, "predicate": rdf_type, "object": expand_property_iri_fast(ts)}));
+                    }
                     _ => {}
                 }
             }
 
             for (k, v) in obj.iter() {
-                if k.starts_with('@') { continue; }
+                if k.starts_with('@') {
+                    continue;
+                }
                 let pred = expand_property_iri_fast(k);
                 match v {
                     Value::Array(arr) => {
-                        for item in arr { emit_triple_for_value(&subject, &pred, item, bnode_cache, triples); }
+                        for item in arr {
+                            emit_triple_for_value(&subject, &pred, item, bnode_cache, triples);
+                        }
                     }
-                    other => { emit_triple_for_value(&subject, &pred, other, bnode_cache, triples); }
+                    other => {
+                        emit_triple_for_value(&subject, &pred, other, bnode_cache, triples);
+                    }
                 }
             }
             Some(subject)
         }
         Value::Array(arr) => {
             let mut last = None;
-            for item in arr { last = extract_triples_node_fast(item, subject_hint.clone(), bnode_cache, triples); }
+            for item in arr {
+                last = extract_triples_node_fast(item, subject_hint.clone(), bnode_cache, triples);
+            }
             last
         }
         _ => subject_hint,
@@ -2678,10 +2932,15 @@ fn extract_triples_node_fast(node: &Value, subject_hint: Option<String>, bnode_c
 fn sorted_json_value(v: &Value) -> Value {
     match v {
         Value::Object(map) => {
-            let mut entries: Vec<(String, Value)> = map.iter().map(|(k, val)| (k.clone(), sorted_json_value(val))).collect();
+            let mut entries: Vec<(String, Value)> = map
+                .iter()
+                .map(|(k, val)| (k.clone(), sorted_json_value(val)))
+                .collect();
             entries.sort_by(|a, b| a.0.cmp(&b.0));
             let mut out = serde_json::Map::new();
-            for (k, val) in entries { out.insert(k, val); }
+            for (k, val) in entries {
+                out.insert(k, val);
+            }
             Value::Object(out)
         }
         Value::Array(arr) => Value::Array(arr.iter().map(sorted_json_value).collect()),
@@ -2689,7 +2948,13 @@ fn sorted_json_value(v: &Value) -> Value {
     }
 }
 
-fn emit_triple_for_value(subject: &str, pred: &str, value: &Value, bnode_cache: &mut std::collections::HashMap<String, String>, triples: &mut Vec<Value>) {
+fn emit_triple_for_value(
+    subject: &str,
+    pred: &str,
+    value: &Value,
+    bnode_cache: &mut std::collections::HashMap<String, String>,
+    triples: &mut Vec<Value>,
+) {
     match value {
         Value::Object(obj) => {
             if let Some(Value::String(id)) = obj.get("@id") {
@@ -2699,7 +2964,8 @@ fn emit_triple_for_value(subject: &str, pred: &str, value: &Value, bnode_cache: 
                 triples.push(json!({"subject": subject, "predicate": pred, "object": lit}));
             } else {
                 // nested blank node
-                let nested_id = extract_triples_node_fast(value, None, bnode_cache, triples).unwrap_or_else(|| format!("_:h{}", uuid::Uuid::new_v4().simple()));
+                let nested_id = extract_triples_node_fast(value, None, bnode_cache, triples)
+                    .unwrap_or_else(|| format!("_:h{}", uuid::Uuid::new_v4().simple()));
                 triples.push(json!({"subject": subject, "predicate": pred, "object": nested_id}));
             }
         }
@@ -2722,22 +2988,47 @@ fn normalize_blank_nodes_fast(triples: &Vec<Value>) -> Vec<Value> {
     // Collect blank node ids
     let mut bnodes: ahash::AHashSet<String> = ahash::AHashSet::new();
     for t in triples.iter() {
-        if let Some(subj) = t.get("subject").and_then(|v| v.as_str()) { if subj.starts_with("_:") { bnodes.insert(subj.to_string()); } }
-        if let Some(obj_str) = t.get("object").and_then(|v| v.as_str()) { if obj_str.starts_with("_:") { bnodes.insert(obj_str.to_string()); } }
+        if let Some(subj) = t.get("subject").and_then(|v| v.as_str()) {
+            if subj.starts_with("_:") {
+                bnodes.insert(subj.to_string());
+            }
+        }
+        if let Some(obj_str) = t.get("object").and_then(|v| v.as_str()) {
+            if obj_str.starts_with("_:") {
+                bnodes.insert(obj_str.to_string());
+            }
+        }
     }
     // Create a stable mapping
     let mut bnodes_vec: Vec<String> = bnodes.into_iter().collect();
     bnodes_vec.sort();
-    let mapping: std::collections::HashMap<String, String> = bnodes_vec.iter().enumerate().map(|(i, b)| (b.clone(), format!("_:h{:08}", i))).collect();
+    let mapping: std::collections::HashMap<String, String> = bnodes_vec
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.clone(), format!("_:h{:08}", i)))
+        .collect();
 
-    triples.iter().map(|t| {
-        let mut new_t = t.clone();
-        if let Some(subj) = new_t.get_mut("subject") { if let Some(s) = subj.as_str() { if let Some(m) = mapping.get(s) { *subj = Value::String(m.clone()); } } }
-        if let Some(obj) = new_t.get_mut("object") {
-            if let Some(s) = obj.as_str() { if let Some(m) = mapping.get(s) { *obj = Value::String(m.clone()); } }
-        }
-        new_t
-    }).collect()
+    triples
+        .iter()
+        .map(|t| {
+            let mut new_t = t.clone();
+            if let Some(subj) = new_t.get_mut("subject") {
+                if let Some(s) = subj.as_str() {
+                    if let Some(m) = mapping.get(s) {
+                        *subj = Value::String(m.clone());
+                    }
+                }
+            }
+            if let Some(obj) = new_t.get_mut("object") {
+                if let Some(s) = obj.as_str() {
+                    if let Some(m) = mapping.get(s) {
+                        *obj = Value::String(m.clone());
+                    }
+                }
+            }
+            new_t
+        })
+        .collect()
 }
 
 fn compare_contexts_fast(old: &Value, new: &Value) -> Value {
@@ -2757,12 +3048,34 @@ fn compare_contexts_fast(old: &Value, new: &Value) -> Value {
     let mut changed = serde_json::Map::new();
     for k in common_keys {
         if old_map.get(k) != new_map.get(k) {
-            changed.insert(k.clone(), json!([old_map.get(k).cloned().unwrap_or_default(), new_map.get(k).cloned().unwrap_or_default()]));
+            changed.insert(
+                k.clone(),
+                json!([
+                    old_map.get(k).cloned().unwrap_or_default(),
+                    new_map.get(k).cloned().unwrap_or_default()
+                ]),
+            );
         }
     }
 
-    let added: serde_json::Map<String, Value> = added_keys.into_iter().map(|k| (k.clone(), Value::String(new_map.get(k).cloned().unwrap_or_default()))).collect();
-    let removed: serde_json::Map<String, Value> = removed_keys.into_iter().map(|k| (k.clone(), Value::String(old_map.get(k).cloned().unwrap_or_default()))).collect();
+    let added: serde_json::Map<String, Value> = added_keys
+        .into_iter()
+        .map(|k| {
+            (
+                k.clone(),
+                Value::String(new_map.get(k).cloned().unwrap_or_default()),
+            )
+        })
+        .collect();
+    let removed: serde_json::Map<String, Value> = removed_keys
+        .into_iter()
+        .map(|k| {
+            (
+                k.clone(),
+                Value::String(old_map.get(k).cloned().unwrap_or_default()),
+            )
+        })
+        .collect();
 
     json!({
         "added_mappings": added,
@@ -2780,17 +3093,26 @@ fn extract_context_fast(document: &Value) -> serde_json::Map<String, Value> {
     }
 }
 
-fn flatten_context_fast(ctx: &serde_json::Map<String, Value>) -> std::collections::HashMap<String, String> {
+fn flatten_context_fast(
+    ctx: &serde_json::Map<String, Value>,
+) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for (k, v) in ctx.iter() {
-        out.insert(k.clone(), match v { Value::String(s) => s.clone(), _ => v.to_string() });
+        out.insert(
+            k.clone(),
+            match v {
+                Value::String(s) => s.clone(),
+                _ => v.to_string(),
+            },
+        );
     }
     out
 }
 
 fn group_changes_by_node_fast(added: &[&Value], removed: &[&Value]) -> Vec<Value> {
     // Build maps keyed by subject and (subject,predicate)
-    let mut nodes_map: std::collections::BTreeMap<String, (Vec<Value>, Vec<Value>, Vec<Value>)> = std::collections::BTreeMap::new();
+    let mut nodes_map: std::collections::BTreeMap<String, (Vec<Value>, Vec<Value>, Vec<Value>)> =
+        std::collections::BTreeMap::new();
 
     // Index by (subject,predicate)
     use std::collections::HashMap;
@@ -2798,15 +3120,37 @@ fn group_changes_by_node_fast(added: &[&Value], removed: &[&Value]) -> Vec<Value
     let mut removed_sp: HashMap<(String, String), Vec<Value>> = HashMap::new();
 
     for t in added.iter() {
-        let subj = t.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let pred = t.get("predicate").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        added_sp.entry((subj.clone(), pred.clone())).or_default().push((*t).clone());
+        let subj = t
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let pred = t
+            .get("predicate")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        added_sp
+            .entry((subj.clone(), pred.clone()))
+            .or_default()
+            .push((*t).clone());
         nodes_map.entry(subj).or_default();
     }
     for t in removed.iter() {
-        let subj = t.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let pred = t.get("predicate").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        removed_sp.entry((subj.clone(), pred.clone())).or_default().push((*t).clone());
+        let subj = t
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let pred = t
+            .get("predicate")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        removed_sp
+            .entry((subj.clone(), pred.clone()))
+            .or_default()
+            .push((*t).clone());
         nodes_map.entry(subj).or_default();
     }
 
@@ -2818,7 +3162,11 @@ fn group_changes_by_node_fast(added: &[&Value], removed: &[&Value]) -> Vec<Value
         let mut modified_props: Vec<Value> = Vec::new();
 
         // For each predicate under this subject, pair add/remove into modified
-        let preds: std::collections::HashSet<String> = added_sp.keys().chain(removed_sp.keys()).filter_map(|(s,p)| if s==node_id {Some(p.clone())} else {None}).collect();
+        let preds: std::collections::HashSet<String> = added_sp
+            .keys()
+            .chain(removed_sp.keys())
+            .filter_map(|(s, p)| if s == node_id { Some(p.clone()) } else { None })
+            .collect();
         for pred in preds {
             let key = (node_id.clone(), pred.clone());
             let adds = added_sp.get(&key).cloned().unwrap_or_default();
@@ -2860,8 +3208,16 @@ fn group_changes_by_node_fast(added: &[&Value], removed: &[&Value]) -> Vec<Value
 }
 
 #[rustler::nif]
-fn patch_semantic<'a>(env: Env<'a>, document: String, patch_str: String, _opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Value>(&document), serde_json::from_str::<Value>(&patch_str)) {
+fn patch_semantic<'a>(
+    env: Env<'a>,
+    document: String,
+    patch_str: String,
+    _opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Value>(&document),
+        serde_json::from_str::<Value>(&patch_str),
+    ) {
         (Ok(mut doc), Ok(patch)) => {
             let mut result = doc.clone();
 
@@ -2880,15 +3236,20 @@ fn patch_semantic<'a>(env: Env<'a>, document: String, patch_str: String, _opts: 
 
             match serde_json::to_string(&result) {
                 Ok(result_json) => Ok((atoms::ok(), result_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
 fn apply_triple_additions(mut doc: Value, added: &[Value]) -> Value {
-    let root_id = doc.get("@id").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let root_id = doc
+        .get("@id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     for t in added.iter() {
         let subj = t.get("subject").and_then(|v| v.as_str());
         let pred = t.get("predicate").and_then(|v| v.as_str());
@@ -2901,13 +3262,21 @@ fn apply_triple_additions(mut doc: Value, added: &[Value]) -> Value {
                         // Merge into @type
                         match doc.get_mut("@type") {
                             Some(Value::String(s)) => {
-                                if s != &ts { *doc.get_mut("@type").unwrap() = Value::Array(vec![Value::String(s.clone()), Value::String(ts)]); }
+                                if s != &ts {
+                                    *doc.get_mut("@type").unwrap() = Value::Array(vec![
+                                        Value::String(s.clone()),
+                                        Value::String(ts),
+                                    ]);
+                                }
                             }
                             Some(Value::Array(arr)) => {
-                                if !arr.iter().any(|v| v.as_str()==Some(ts.as_str())) { arr.push(Value::String(ts)); }
+                                if !arr.iter().any(|v| v.as_str() == Some(ts.as_str())) {
+                                    arr.push(Value::String(ts));
+                                }
                             }
                             _ => {
-                                doc.as_object_mut().map(|m| m.insert("@type".to_string(), Value::String(ts)));
+                                doc.as_object_mut()
+                                    .map(|m| m.insert("@type".to_string(), Value::String(ts)));
                             }
                         }
                     }
@@ -2916,11 +3285,15 @@ fn apply_triple_additions(mut doc: Value, added: &[Value]) -> Value {
                     let key = iri_local_name(predicate);
                     let new_val = object_to_json_value(t.get("object"));
                     // Ensure object
-                    if !doc.is_object() { doc = json!({}); }
+                    if !doc.is_object() {
+                        doc = json!({});
+                    }
                     let objm = doc.as_object_mut().unwrap();
                     match objm.get_mut(&key) {
                         Some(Value::Array(arr)) => {
-                            if !arr.iter().any(|v| v == &new_val) { arr.push(new_val); }
+                            if !arr.iter().any(|v| v == &new_val) {
+                                arr.push(new_val);
+                            }
                         }
                         Some(current) => {
                             if *current != new_val {
@@ -2928,7 +3301,9 @@ fn apply_triple_additions(mut doc: Value, added: &[Value]) -> Value {
                                 *current = Value::Array(vec![prev, new_val]);
                             }
                         }
-                        None => { objm.insert(key, new_val); }
+                        None => {
+                            objm.insert(key, new_val);
+                        }
                     }
                 }
             }
@@ -2938,7 +3313,10 @@ fn apply_triple_additions(mut doc: Value, added: &[Value]) -> Value {
 }
 
 fn apply_triple_removals(mut doc: Value, removed: &[Value]) -> Value {
-    let root_id = doc.get("@id").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let root_id = doc
+        .get("@id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     for t in removed.iter() {
         let subj = t.get("subject").and_then(|v| v.as_str());
         let pred = t.get("predicate").and_then(|v| v.as_str());
@@ -2950,13 +3328,16 @@ fn apply_triple_removals(mut doc: Value, removed: &[Value]) -> Value {
                     if let Some(ts) = type_str {
                         match doc.get_mut("@type") {
                             Some(Value::String(s)) => {
-                                if s == &ts { doc.as_object_mut().map(|m| m.remove("@type")); }
+                                if s == &ts {
+                                    doc.as_object_mut().map(|m| m.remove("@type"));
+                                }
                             }
                             Some(Value::Array(arr)) => {
-                                arr.retain(|v| v.as_str()!=Some(ts.as_str()));
-                                if arr.len()==1 {
+                                arr.retain(|v| v.as_str() != Some(ts.as_str()));
+                                if arr.len() == 1 {
                                     let only = arr[0].clone();
-                                    doc.as_object_mut().map(|m| m.insert("@type".to_string(), only));
+                                    doc.as_object_mut()
+                                        .map(|m| m.insert("@type".to_string(), only));
                                 }
                             }
                             _ => {}
@@ -2979,7 +3360,9 @@ fn apply_triple_removals(mut doc: Value, removed: &[Value]) -> Value {
                                     }
                                 }
                                 v => {
-                                    if *v == rem_val { objm.remove(&key); }
+                                    if *v == rem_val {
+                                        objm.remove(&key);
+                                    }
                                 }
                             }
                         }
@@ -2994,16 +3377,26 @@ fn apply_triple_removals(mut doc: Value, removed: &[Value]) -> Value {
 fn object_to_type_local(obj_val: Option<&Value>) -> Option<String> {
     match obj_val {
         Some(Value::String(s)) => Some(iri_local_name(s)),
-        Some(Value::Object(map)) => map.get("@id").and_then(|v| v.as_str()).map(|s| iri_local_name(s)),
+        Some(Value::Object(map)) => map
+            .get("@id")
+            .and_then(|v| v.as_str())
+            .map(|s| iri_local_name(s)),
         _ => None,
     }
 }
 
 fn iri_local_name(iri: &str) -> String {
-    if let Some(pos) = iri.rfind(['/', '#']) { iri[pos+1..].to_string() } else { iri.to_string() }
+    if let Some(pos) = iri.rfind(['/', '#']) {
+        iri[pos + 1..].to_string()
+    } else {
+        iri.to_string()
+    }
 }
 
-fn apply_context_changes_fast(mut document: Value, changes: &serde_json::Map<String, Value>) -> Value {
+fn apply_context_changes_fast(
+    mut document: Value,
+    changes: &serde_json::Map<String, Value>,
+) -> Value {
     // Ensure @context is an object map
     let mut ctx = match document.get("@context") {
         Some(Value::Object(map)) => map.clone(),
@@ -3011,18 +3404,28 @@ fn apply_context_changes_fast(mut document: Value, changes: &serde_json::Map<Str
     };
 
     if let Some(added) = changes.get("added_mappings").and_then(|v| v.as_object()) {
-        for (k, v) in added.iter() { ctx.insert(k.clone(), v.clone()); }
+        for (k, v) in added.iter() {
+            ctx.insert(k.clone(), v.clone());
+        }
     }
     if let Some(removed) = changes.get("removed_mappings").and_then(|v| v.as_object()) {
-        for (k, _v) in removed.iter() { ctx.remove(k); }
+        for (k, _v) in removed.iter() {
+            ctx.remove(k);
+        }
     }
     if let Some(changed) = changes.get("changed_mappings").and_then(|v| v.as_object()) {
         for (k, vpair) in changed.iter() {
-            if let Some(arr) = vpair.as_array() { if arr.len()==2 { ctx.insert(k.clone(), arr[1].clone()); } }
+            if let Some(arr) = vpair.as_array() {
+                if arr.len() == 2 {
+                    ctx.insert(k.clone(), arr[1].clone());
+                }
+            }
         }
     }
 
-    document.as_object_mut().map(|m| m.insert("@context".to_string(), Value::Object(ctx)));
+    document
+        .as_object_mut()
+        .map(|m| m.insert("@context".to_string(), Value::Object(ctx)));
     document
 }
 
@@ -3030,24 +3433,43 @@ fn object_to_json_value(obj_val: Option<&Value>) -> Value {
     match obj_val {
         Some(Value::String(s)) => Value::String(s.clone()),
         Some(Value::Object(map)) => {
-            if let Some(vid) = map.get("@id").and_then(|v| v.as_str()) { return Value::String(vid.to_string()); }
+            if let Some(vid) = map.get("@id").and_then(|v| v.as_str()) {
+                return Value::String(vid.to_string());
+            }
             let v = map.get("value").cloned().unwrap_or(Value::Null);
             if let Some(t) = map.get("type").and_then(|v| v.as_str()) {
                 // Coerce basic XSD types to JSON scalars if possible
                 match t {
                     "http://www.w3.org/2001/XMLSchema#integer" => {
-                        if let Some(s) = v.as_str() { if let Ok(n) = s.parse::<i64>() { return Value::Number(n.into()); } }
+                        if let Some(s) = v.as_str() {
+                            if let Ok(n) = s.parse::<i64>() {
+                                return Value::Number(n.into());
+                            }
+                        }
                         return v;
                     }
                     "http://www.w3.org/2001/XMLSchema#double" => {
-                        if let Some(s) = v.as_str() { if let Ok(f) = s.parse::<f64>() { return Value::Number(serde_json::Number::from_f64(f).unwrap_or(serde_json::Number::from(0))); } }
+                        if let Some(s) = v.as_str() {
+                            if let Ok(f) = s.parse::<f64>() {
+                                return Value::Number(
+                                    serde_json::Number::from_f64(f)
+                                        .unwrap_or(serde_json::Number::from(0)),
+                                );
+                            }
+                        }
                         return v;
                     }
                     "http://www.w3.org/2001/XMLSchema#boolean" => {
-                        if let Some(s) = v.as_str() { if s == "true" { return Value::Bool(true); } else if s == "false" { return Value::Bool(false); } }
+                        if let Some(s) = v.as_str() {
+                            if s == "true" {
+                                return Value::Bool(true);
+                            } else if s == "false" {
+                                return Value::Bool(false);
+                            }
+                        }
                         return v;
                     }
-                    _ => v
+                    _ => v,
                 }
             } else if let Some(_lang) = map.get("language").and_then(|v| v.as_str()) {
                 // For now, drop language and use raw string
@@ -3082,23 +3504,32 @@ fn current_timestamp_nanos() -> u64 {
 // ====================
 
 #[rustler::nif]
-fn compute_lcs_array<'a>(env: Env<'a>, old_array: String, new_array: String) -> NifResult<Term<'a>> {
-    match (serde_json::from_str::<Vec<Value>>(&old_array), serde_json::from_str::<Vec<Value>>(&new_array)) {
+fn compute_lcs_array<'a>(
+    env: Env<'a>,
+    old_array: String,
+    new_array: String,
+) -> NifResult<Term<'a>> {
+    match (
+        serde_json::from_str::<Vec<Value>>(&old_array),
+        serde_json::from_str::<Vec<Value>>(&new_array),
+    ) {
         (Ok(old_arr), Ok(new_arr)) => {
             let lcs_ops = compute_lcs_operations(&old_arr, &new_arr);
             match serde_json::to_string(&lcs_ops) {
                 Ok(result_json) => Ok((atoms::ok(), result_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        (Err(e), _) | (_, Err(e)) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        (Err(e), _) | (_, Err(e)) => {
+            Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        }
     }
 }
 
 fn compute_lcs_operations(old: &[Value], new: &[Value]) -> Vec<Value> {
     // Simplified LCS - just return insert/delete operations
     let mut operations = Vec::new();
-    
+
     // Delete old items
     for (i, _) in old.iter().enumerate().rev() {
         operations.push(json!({
@@ -3106,7 +3537,7 @@ fn compute_lcs_operations(old: &[Value], new: &[Value]) -> Vec<Value> {
             "index": i
         }));
     }
-    
+
     // Insert new items
     for (i, item) in new.iter().enumerate() {
         operations.push(json!({
@@ -3115,7 +3546,7 @@ fn compute_lcs_operations(old: &[Value], new: &[Value]) -> Vec<Value> {
             "value": item
         }));
     }
-    
+
     operations
 }
 
@@ -3124,9 +3555,9 @@ fn text_diff_myers<'a>(env: Env<'a>, old_text: String, new_text: String) -> NifR
     let text_diff = TextDiff::configure()
         .algorithm(Algorithm::Myers)
         .diff_chars(&old_text, &new_text);
-    
+
     let mut operations = Vec::new();
-    
+
     for op in text_diff.ops() {
         let operation = json!({
             "tag": match op.tag() {
@@ -3140,7 +3571,7 @@ fn text_diff_myers<'a>(env: Env<'a>, old_text: String, new_text: String) -> NifR
         });
         operations.push(operation);
     }
-    
+
     let result = json!({
         "operations": operations,
         "common_prefix": "",
@@ -3148,12 +3579,16 @@ fn text_diff_myers<'a>(env: Env<'a>, old_text: String, new_text: String) -> NifR
         "old_middle": old_text,
         "new_middle": new_text
     });
-    
+
     Ok((atoms::ok(), result.to_string()).encode(env))
 }
 
 #[rustler::nif]
-fn normalize_rdf_graph<'a>(env: Env<'a>, document: String, algorithm: String) -> NifResult<Term<'a>> {
+fn normalize_rdf_graph<'a>(
+    env: Env<'a>,
+    document: String,
+    algorithm: String,
+) -> NifResult<Term<'a>> {
     // If URDNA2015 requested and ssi feature is available, prefer that path.
     if algorithm.to_lowercase() == "urdna2015" {
         // Convert to a simple N-Quads form (placeholder) then canonicalize via ssi when enabled.
@@ -3167,7 +3602,7 @@ fn normalize_rdf_graph<'a>(env: Env<'a>, document: String, algorithm: String) ->
                     }
                 }
             }
-            Err(e) => return Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+            Err(e) => return Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env)),
         }
     }
 
@@ -3177,34 +3612,40 @@ fn normalize_rdf_graph<'a>(env: Env<'a>, document: String, algorithm: String) ->
             let normalized = normalize_document_simple(&doc, &algorithm);
             Ok((atoms::ok(), normalized).encode(env))
         }
-        Err(e) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        Err(e) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env)),
     }
 }
 
 fn normalize_document_simple(document: &Value, _algorithm: &str) -> String {
     // Return a simplified normalized representation
-    format!("# Normalized representation of document\n# Algorithm: URDNA2015\n{}", 
-            serde_json::to_string_pretty(document).unwrap_or_default())
+    format!(
+        "# Normalized representation of document\n# Algorithm: URDNA2015\n{}",
+        serde_json::to_string_pretty(document).unwrap_or_default()
+    )
 }
 
 #[rustler::nif]
-fn merge_diffs_operational<'a>(env: Env<'a>, diffs: String, opts: Vec<(String, String)>) -> NifResult<Term<'a>> {
+fn merge_diffs_operational<'a>(
+    env: Env<'a>,
+    diffs: String,
+    opts: Vec<(String, String)>,
+) -> NifResult<Term<'a>> {
     match serde_json::from_str::<Vec<Value>>(&diffs) {
         Ok(diff_array) => {
             let merged = merge_operational_diffs(&diff_array, &opts);
             match serde_json::to_string(&merged) {
                 Ok(result_json) => Ok((atoms::ok(), result_json).encode(env)),
-                Err(e) => Ok((atoms::error(), e.to_string()).encode(env))
+                Err(e) => Ok((atoms::error(), e.to_string()).encode(env)),
             }
         }
-        Err(e) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env))
+        Err(e) => Ok((atoms::error(), format!("JSON parse error: {}", e)).encode(env)),
     }
 }
 
 fn merge_operational_diffs(diffs: &[Value], _opts: &[(String, String)]) -> Value {
     let mut all_operations = Vec::new();
     let mut all_actors = Vec::new();
-    
+
     for diff in diffs {
         if let Some(operations) = diff.get("operations").and_then(|v| v.as_array()) {
             all_operations.extend_from_slice(operations);
@@ -3221,12 +3662,10 @@ fn merge_operational_diffs(diffs: &[Value], _opts: &[(String, String)]) -> Value
             }
         }
     }
-    
+
     // Sort operations by timestamp
-    all_operations.sort_by_key(|op| {
-        op.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0)
-    });
-    
+    all_operations.sort_by_key(|op| op.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0));
+
     json!({
         "operations": all_operations,
         "metadata": {

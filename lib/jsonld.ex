@@ -23,4 +23,3 @@ defmodule JSONLD do
   """
   def equal?(a, b, opts \\ []), do: C14n.equal?(a, b, opts)
 end
-

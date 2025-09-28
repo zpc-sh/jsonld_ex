@@ -9,11 +9,11 @@ defmodule JsonldExTest do
         "@type" => "Person",
         "name" => "Jane"
       }
-      
+
       assert {:ok, expanded} = JsonldEx.expand(doc)
       assert is_list(expanded)
       assert length(expanded) == 1
-      
+
       [first_item] = expanded
       assert first_item["@type"] == "http://example.org/Person"
       assert first_item["http://example.org/name"] == "Jane"
@@ -25,7 +25,7 @@ defmodule JsonldExTest do
         "@type" => "schema:Person",
         "name" => "John Doe"
       }
-      
+
       assert {:ok, expanded} = JsonldEx.expand(doc)
       assert is_list(expanded)
     end
@@ -35,7 +35,7 @@ defmodule JsonldExTest do
         "@context" => %{"items" => "http://example.org/items"},
         "items" => ["item1", "item2", "item3"]
       }
-      
+
       assert {:ok, expanded} = JsonldEx.expand(doc)
       assert is_list(expanded)
     end
@@ -47,35 +47,41 @@ defmodule JsonldExTest do
         "@type" => "Person",
         "knows" => %{"@id" => "http://example.org/person/2"}
       }
-      
+
       assert {:ok, expanded} = JsonldEx.expand(doc)
       assert is_list(expanded)
     end
   end
 
-  describe "compact/3" do  
+  describe "compact/3" do
     test "compacts an expanded JSON-LD document" do
-      expanded = [%{
-        "@type" => "http://schema.org/Person", 
-        "http://schema.org/name" => "Jane"
-      }]
+      expanded = [
+        %{
+          "@type" => "http://schema.org/Person",
+          "http://schema.org/name" => "Jane"
+        }
+      ]
+
       context = %{"name" => "http://schema.org/name"}
-      
+
       assert {:ok, compacted} = JsonldEx.compact(expanded, context)
       assert is_map(compacted)
     end
 
     test "handles multiple context mappings" do
-      expanded = [%{
-        "@type" => "http://schema.org/Person",
-        "http://schema.org/name" => "John",
-        "http://schema.org/age" => 30
-      }]
+      expanded = [
+        %{
+          "@type" => "http://schema.org/Person",
+          "http://schema.org/name" => "John",
+          "http://schema.org/age" => 30
+        }
+      ]
+
       context = %{
         "name" => "http://schema.org/name",
         "age" => "http://schema.org/age"
       }
-      
+
       assert {:ok, compacted} = JsonldEx.compact(expanded, context)
       assert is_map(compacted)
     end
@@ -88,14 +94,15 @@ defmodule JsonldExTest do
         "@type" => "Person",
         "name" => "Speed Test"
       }
-      
+
       # Warm up
       JsonldEx.expand(doc)
-      
-      {time, {:ok, _result}} = :timer.tc(fn ->
-        JsonldEx.expand(doc)
-      end)
-      
+
+      {time, {:ok, _result}} =
+        :timer.tc(fn ->
+          JsonldEx.expand(doc)
+        end)
+
       # Should be faster than 1ms for simple documents
       assert time < 1_000
     end
@@ -117,7 +124,7 @@ defmodule JsonldExTest do
     test "parses semantic versions" do
       assert {:ok, result} = JsonldEx.Native.parse_semantic_version("1.2.3")
       assert is_binary(result)
-      
+
       # Parse the JSON result
       {:ok, parsed} = Jason.decode(result)
       assert parsed["major"] == 1
@@ -127,7 +134,7 @@ defmodule JsonldExTest do
 
     test "compares versions correctly" do
       assert :lt = JsonldEx.Native.compare_versions("1.2.3", "1.2.4")
-      assert :gt = JsonldEx.Native.compare_versions("2.0.0", "1.9.9") 
+      assert :gt = JsonldEx.Native.compare_versions("2.0.0", "1.9.9")
       assert :eq = JsonldEx.Native.compare_versions("1.0.0", "1.0.0")
     end
 

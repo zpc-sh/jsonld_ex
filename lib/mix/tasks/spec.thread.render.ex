@@ -16,7 +16,7 @@ defmodule Mix.Tasks.Spec.Thread.Render do
 
     root = Path.join(["work", "spec_requests", id])
     req_path = Path.join(root, "request.json")
-    request = File.exists?(req_path) && Jason.decode!(File.read!(req_path)) || %{}
+    request = (File.exists?(req_path) && Jason.decode!(File.read!(req_path))) || %{}
 
     msgs =
       [Path.join(root, "inbox"), Path.join(root, "outbox")]
@@ -33,16 +33,24 @@ defmodule Mix.Tasks.Spec.Thread.Render do
 
     out =
       Enum.reduce(msgs, out, fn {_path, m, ts}, acc ->
-        header = "### [#{m["type"]}] #{m["from"]["project"]}/#{m["from"]["agent"]} @ #{iso8601(ts)}\n\n"
+        header =
+          "### [#{m["type"]}] #{m["from"]["project"]}/#{m["from"]["agent"]} @ #{iso8601(ts)}\n\n"
+
         ref =
           case m["ref"] do
             nil -> ""
             %{"path" => p} = r -> "Ref: #{p} #{r["json_pointer"] || ""}\n\n"
             _ -> ""
           end
+
         body = m["body"] || ""
         files = m["attachments"] || []
-        files_block = if files == [], do: "", else: "Attachments:\n\n" <> Enum.map_join(files, "\n", &("- " <> &1)) <> "\n\n"
+
+        files_block =
+          if files == [],
+            do: "",
+            else: "Attachments:\n\n" <> Enum.map_join(files, "\n", &("- " <> &1)) <> "\n\n"
+
         acc ++ [header, ref, body, "\n\n", files_block]
       end)
 
@@ -52,6 +60,7 @@ defmodule Mix.Tasks.Spec.Thread.Render do
   end
 
   defp canonical_ts(nil), do: nil
+
   defp canonical_ts(str) when is_binary(str) do
     case DateTime.from_iso8601(str) do
       {:ok, dt, _offset} -> DateTime.truncate(dt, :second)
@@ -63,6 +72,11 @@ defmodule Mix.Tasks.Spec.Thread.Render do
 
   defp mtime_dt!(path) do
     {:ok, stat} = File.stat(path)
-    stat.mtime |> NaiveDateTime.to_erl() |> NaiveDateTime.from_erl!() |> DateTime.from_naive!("Etc/UTC") |> DateTime.truncate(:second)
+
+    stat.mtime
+    |> NaiveDateTime.to_erl()
+    |> NaiveDateTime.from_erl!()
+    |> DateTime.from_naive!("Etc/UTC")
+    |> DateTime.truncate(:second)
   end
 end

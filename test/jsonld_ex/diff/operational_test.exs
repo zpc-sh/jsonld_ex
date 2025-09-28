@@ -9,12 +9,12 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"name" => "Jane", "age" => 30}
 
       {:ok, diff} = Operational.diff(old, new)
-      
+
       assert is_list(diff.operations)
-      
+
       set_ops = Enum.filter(diff.operations, &(&1.type == :set))
       assert length(set_ops) == 1
-      
+
       name_op = Enum.find(set_ops, &(&1.path == ["name"]))
       assert name_op.value == "Jane"
     end
@@ -24,10 +24,10 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"name" => "John", "age" => 30}
 
       {:ok, diff} = Operational.diff(old, new)
-      
+
       delete_ops = Enum.filter(diff.operations, &(&1.type == :delete))
       assert length(delete_ops) == 1
-      
+
       city_op = Enum.find(delete_ops, &(&1.path == ["city"]))
       assert city_op != nil
     end
@@ -37,7 +37,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"name" => "Jane"}
 
       {:ok, diff} = Operational.diff(old, new, actor_id: "test_actor")
-      
+
       assert length(diff.operations) > 0
       op = hd(diff.operations)
       assert op.actor_id == "test_actor"
@@ -49,7 +49,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"name" => "Jane"}
 
       {:ok, diff} = Operational.diff(old, new, actor_id: "test_actor")
-      
+
       assert diff.metadata.actors == ["test_actor"]
       assert diff.metadata.conflict_resolution == :last_write_wins
       assert is_tuple(diff.metadata.timestamp_range)
@@ -60,12 +60,12 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"person" => %{"name" => "Jane", "age" => 31}}
 
       {:ok, diff} = Operational.diff(old, new)
-      
+
       set_ops = Enum.filter(diff.operations, &(&1.type == :set))
-      
+
       name_op = Enum.find(set_ops, &(&1.path == ["person", "name"]))
       age_op = Enum.find(set_ops, &(&1.path == ["person", "age"]))
-      
+
       assert name_op.value == "Jane"
       assert age_op.value == 31
     end
@@ -75,11 +75,11 @@ defmodule JsonldEx.Diff.OperationalTest do
       new = %{"items" => [1, 4, 3, 5]}
 
       {:ok, diff} = Operational.diff(old, new)
-      
+
       # Should have delete operations to clear array and insert operations to rebuild
       delete_ops = Enum.filter(diff.operations, &(&1.type == :delete))
       insert_ops = Enum.filter(diff.operations, &(&1.type == :insert))
-      
+
       assert length(delete_ops) > 0
       assert length(insert_ops) > 0
     end
@@ -120,11 +120,11 @@ defmodule JsonldEx.Diff.OperationalTest do
   describe "operational patching" do
     test "applies set operations" do
       document = %{"name" => "John", "age" => 30}
-      
+
       operations = [
         %{type: :set, path: ["name"], value: "Jane", timestamp: 1, actor_id: "test"}
       ]
-      
+
       diff = %{operations: operations, metadata: %{}}
 
       {:ok, result} = Operational.patch(document, diff)
@@ -134,11 +134,11 @@ defmodule JsonldEx.Diff.OperationalTest do
 
     test "applies delete operations" do
       document = %{"name" => "John", "age" => 30, "city" => "NYC"}
-      
+
       operations = [
         %{type: :delete, path: ["city"], value: nil, timestamp: 1, actor_id: "test"}
       ]
-      
+
       diff = %{operations: operations, metadata: %{}}
 
       {:ok, result} = Operational.patch(document, diff)
@@ -149,11 +149,11 @@ defmodule JsonldEx.Diff.OperationalTest do
 
     test "applies insert operations" do
       document = %{"name" => "John"}
-      
+
       operations = [
         %{type: :insert, path: ["age"], value: 30, timestamp: 1, actor_id: "test"}
       ]
-      
+
       diff = %{operations: operations, metadata: %{}}
 
       {:ok, result} = Operational.patch(document, diff)
@@ -163,12 +163,12 @@ defmodule JsonldEx.Diff.OperationalTest do
 
     test "applies operations in timestamp order" do
       document = %{"counter" => 0}
-      
+
       operations = [
         %{type: :set, path: ["counter"], value: 2, timestamp: 2, actor_id: "test2"},
         %{type: :set, path: ["counter"], value: 1, timestamp: 1, actor_id: "test1"}
       ]
-      
+
       diff = %{operations: operations, metadata: %{}}
 
       {:ok, result} = Operational.patch(document, diff)
@@ -185,7 +185,7 @@ defmodule JsonldEx.Diff.OperationalTest do
         ],
         metadata: %{actors: ["actor1"], conflict_resolution: :last_write_wins}
       }
-      
+
       diff2 = %{
         operations: [
           %{type: :set, path: ["age"], value: 31, timestamp: 2, actor_id: "actor2"}
@@ -194,7 +194,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       }
 
       {:ok, merged} = Operational.merge_diffs([diff1, diff2])
-      
+
       assert length(merged.operations) == 2
       assert Enum.any?(merged.operations, &(&1.path == ["name"] and &1.actor_id == "actor1"))
       assert Enum.any?(merged.operations, &(&1.path == ["age"] and &1.actor_id == "actor2"))
@@ -208,7 +208,7 @@ defmodule JsonldEx.Diff.OperationalTest do
         ],
         metadata: %{actors: ["actor1"], conflict_resolution: :last_write_wins}
       }
-      
+
       diff2 = %{
         operations: [
           %{type: :set, path: ["name"], value: "Bob", timestamp: 2, actor_id: "actor2"}
@@ -217,7 +217,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       }
 
       {:ok, merged} = Operational.merge_diffs([diff1, diff2], conflict_resolution: :last_write_wins)
-      
+
       # Should only have the operation with later timestamp
       name_ops = Enum.filter(merged.operations, &(&1.path == ["name"]))
       assert length(name_ops) == 1
@@ -232,7 +232,7 @@ defmodule JsonldEx.Diff.OperationalTest do
         ],
         metadata: %{actors: ["actor1"], conflict_resolution: :merge}
       }
-      
+
       diff2 = %{
         operations: [
           %{type: :set, path: ["name"], value: "Bob", timestamp: 2, actor_id: "actor2"}
@@ -241,7 +241,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       }
 
       {:ok, merged} = Operational.merge_diffs([diff1, diff2], conflict_resolution: :merge)
-      
+
       # Should preserve all operations when using merge strategy
       assert length(merged.operations) == 2
     end
@@ -257,7 +257,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       }
 
       {:ok, inverse} = Operational.inverse(diff)
-      
+
       assert length(inverse.operations) == 1
       op = hd(inverse.operations)
       assert op.type == :delete
@@ -273,7 +273,7 @@ defmodule JsonldEx.Diff.OperationalTest do
       }
 
       {:ok, inverse} = Operational.inverse(diff)
-      
+
       assert length(inverse.operations) == 1
       op = hd(inverse.operations)
       assert op.type == :set
@@ -285,11 +285,11 @@ defmodule JsonldEx.Diff.OperationalTest do
         %{type: :set, path: ["name"], value: "Jane", timestamp: 1, actor_id: "test"},
         %{type: :set, path: ["age"], value: 30, timestamp: 2, actor_id: "test"}
       ]
-      
+
       diff = %{operations: operations, metadata: %{}}
 
       {:ok, inverse} = Operational.inverse(diff)
-      
+
       # Operations should be in reverse order
       assert length(inverse.operations) == 2
       assert hd(inverse.operations).path == ["age"]
@@ -300,7 +300,7 @@ defmodule JsonldEx.Diff.OperationalTest do
   describe "validation" do
     test "validates operations against document" do
       document = %{"name" => "John", "age" => 30}
-      
+
       valid_diff = %{
         operations: [
           %{type: :set, path: ["name"], value: "Jane", timestamp: 1, actor_id: "test"}
@@ -314,7 +314,7 @@ defmodule JsonldEx.Diff.OperationalTest do
 
     test "rejects operations on non-existent paths" do
       document = %{"name" => "John"}
-      
+
       invalid_diff = %{
         operations: [
           %{type: :delete, path: ["age"], value: nil, timestamp: 1, actor_id: "test"}
@@ -342,11 +342,11 @@ defmodule JsonldEx.Diff.OperationalTest do
 
       {:ok, diff1} = Operational.diff(old, new)
       {:ok, diff2} = Operational.diff(old, new)
-      
+
       # Should have different actor IDs
       actor1 = diff1.metadata.actors |> hd()
       actor2 = diff2.metadata.actors |> hd()
-      
+
       assert actor1 != actor2
     end
 
@@ -361,7 +361,7 @@ defmodule JsonldEx.Diff.OperationalTest do
           }
         }
       }
-      
+
       new = %{
         "user" => %{
           "profile" => %{
@@ -376,7 +376,7 @@ defmodule JsonldEx.Diff.OperationalTest do
 
       {:ok, diff} = Operational.diff(old, new)
       {:ok, result} = Operational.patch(old, diff)
-      
+
       assert result["user"]["profile"]["name"] == "Jane"
       assert result["user"]["profile"]["settings"]["theme"] == "light"
       assert result["user"]["profile"]["settings"]["notifications"] == true

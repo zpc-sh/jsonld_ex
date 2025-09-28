@@ -12,18 +12,19 @@ defmodule Mix.Tasks.Spec.Msg.New do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv,
-      switches: [
-        id: :string,
-        type: :string,
-        body: :string,
-        from_project: :string,
-        from_agent: :string,
-        ref_path: :string,
-        ref_pointer: :string,
-        attach: :keep
-      ]
-    )
+    {opts, _, _} =
+      OptionParser.parse(argv,
+        switches: [
+          id: :string,
+          type: :string,
+          body: :string,
+          from_project: :string,
+          from_agent: :string,
+          ref_path: :string,
+          ref_pointer: :string,
+          attach: :keep
+        ]
+      )
 
     id = req!(opts, :id)
     type = req!(opts, :type)
@@ -43,11 +44,12 @@ defmodule Mix.Tasks.Spec.Msg.New do
     body = File.read!(body_path)
 
     msg_id = gen_msg_id()
+
     msg = %{
       id: msg_id,
       from: %{project: from_project, agent: from_agent},
       type: type,
-      ref: ref_path || ref_pointer && %{path: ref_path, json_pointer: ref_pointer} || nil,
+      ref: ref_path || (ref_pointer && %{path: ref_path, json_pointer: ref_pointer}) || nil,
       body: body,
       attachments: [],
       relates_to: %{request_id: id},
@@ -71,6 +73,7 @@ defmodule Mix.Tasks.Spec.Msg.New do
 
   defp now, do: DateTime.utc_now() |> DateTime.to_iso8601()
   defp req!(opts, key), do: Keyword.get(opts, key) || Mix.raise("Missing --#{key}")
+
   defp gen_msg_id do
     ts = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(~r/[:]/, "")
     sh = :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)

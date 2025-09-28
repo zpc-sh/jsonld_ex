@@ -12,12 +12,18 @@ defmodule Mix.Tasks.Spec.Msg.Pull do
   def run(argv) do
     {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, from: :string])
     id = req!(opts, :id)
+
     from_outbox =
       case Keyword.get(opts, :from) do
         nil ->
-          base = System.get_env("SPEC_HANDOFF_DIR") || Mix.raise("Provide --from or set SPEC_HANDOFF_DIR")
+          base =
+            System.get_env("SPEC_HANDOFF_DIR") ||
+              Mix.raise("Provide --from or set SPEC_HANDOFF_DIR")
+
           Path.join([base, id, "outbox"])
-        v -> v
+
+        v ->
+          v
       end
 
     dest_root = Path.join(["work", "spec_requests", id])

@@ -12,7 +12,10 @@ defmodule Mix.Tasks.Spec.Push do
   def run(argv) do
     {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, dest: :string])
     id = require!(opts, :id)
-    dest = Keyword.get(opts, :dest) || System.get_env("SPEC_HANDOFF_DIR") || Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
+
+    dest =
+      Keyword.get(opts, :dest) || System.get_env("SPEC_HANDOFF_DIR") ||
+        Mix.raise("Provide --dest or set SPEC_HANDOFF_DIR")
 
     src_root = Path.join(["work", "spec_requests", id])
     File.dir?(src_root) || Mix.raise("Request not found: #{src_root}")
@@ -28,12 +31,17 @@ defmodule Mix.Tasks.Spec.Push do
     for path <- Path.wildcard(Path.join(src, "**/*"), match_dot: true) do
       rel = Path.relative_to(path, src)
       target = Path.join(dst, rel)
+
       cond do
-        File.dir?(path) -> File.mkdir_p!(target)
+        File.dir?(path) ->
+          File.mkdir_p!(target)
+
         File.regular?(path) ->
           File.mkdir_p!(Path.dirname(target))
           File.cp!(path, target)
-        true -> :ok
+
+        true ->
+          :ok
       end
     end
   end

@@ -21,18 +21,20 @@ defmodule Mix.Tasks.Spec.Hash do
     request = Jason.decode!(File.read!(req_path))
 
     {:ok, stable} = JSONLD.hash(request, form: :stable_json)
-    urdna = case JSONLD.hash(request, form: :urdna2015_nquads) do
-      {:ok, u} -> u
-      _ -> nil
-    end
+
+    urdna =
+      case JSONLD.hash(request, form: :urdna2015_nquads) do
+        {:ok, u} -> u
+        _ -> nil
+      end
 
     out = %{
       "stable_json" => stable,
       "urdna2015_nquads" => urdna
     }
+
     out_path = Path.join(root, "hashes.json")
     File.write!(out_path, Jason.encode_to_iodata!(out, pretty: true))
     Mix.shell().info("Wrote #{out_path}")
   end
 end
-

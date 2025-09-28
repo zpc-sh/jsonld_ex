@@ -31,7 +31,6 @@ defmodule JsonldEx.MixProject do
     ]
   end
 
-
   # BUILD: Documentation configuration
   defp docs do
     [

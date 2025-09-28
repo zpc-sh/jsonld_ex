@@ -26,18 +26,43 @@ defmodule Mix.Tasks.Spec.Hub.Init do
     File.mkdir_p!(docs_dir)
 
     # Copy schemas
-    copy!(Path.join([File.cwd!(), "work/spec_requests/ack.schema.json"]), Path.join(sch_dir, "ack.schema.json"))
-    copy!(Path.join([File.cwd!(), "work/spec_requests/message.schema.json"]), Path.join(sch_dir, "message.schema.json"))
-    copy!(Path.join([File.cwd!(), "work/spec_requests/schema.json"]), Path.join(sch_dir, "request.schema.json"))
+    copy!(
+      Path.join([File.cwd!(), "work/spec_requests/ack.schema.json"]),
+      Path.join(sch_dir, "ack.schema.json")
+    )
+
+    copy!(
+      Path.join([File.cwd!(), "work/spec_requests/message.schema.json"]),
+      Path.join(sch_dir, "message.schema.json")
+    )
+
+    copy!(
+      Path.join([File.cwd!(), "work/spec_requests/schema.json"]),
+      Path.join(sch_dir, "request.schema.json")
+    )
+
     # Copy JSON-LD context
-    copy!(Path.join([File.cwd!(), "work/spec_requests/contexts/spec.jsonld"]), Path.join(sch_dir, "contexts/spec.jsonld"))
+    copy!(
+      Path.join([File.cwd!(), "work/spec_requests/contexts/spec.jsonld"]),
+      Path.join(sch_dir, "contexts/spec.jsonld")
+    )
 
     # Copy docs
     copy!(Path.join([File.cwd!(), "AGENTS.codex.md"]), Path.join(docs_dir, "AGENTS.codex.md"))
-    copy!(Path.join([File.cwd!(), "work/spec_requests/README.receivers.md"]), Path.join(docs_dir, "README.receivers.md"))
+
+    copy!(
+      Path.join([File.cwd!(), "work/spec_requests/README.receivers.md"]),
+      Path.join(docs_dir, "README.receivers.md")
+    )
 
     index = Path.join(hub, "index.md")
-    if !File.exists?(index), do: File.write!(index, "# Spec Hub Index\n\nRun `mix spec.index --hub #{hub}` to generate contents.\n")
+
+    if !File.exists?(index),
+      do:
+        File.write!(
+          index,
+          "# Spec Hub Index\n\nRun `mix spec.index --hub #{hub}` to generate contents.\n"
+        )
 
     Mix.shell().info("Initialized spec-hub at #{hub}")
   end

@@ -19,21 +19,26 @@ defmodule Mix.Tasks.Spec.Lint do
     id = Keyword.get(opts, :id) || Mix.raise("Missing --id")
 
     root = Path.join(["work", "spec_requests", id])
-    schema_root = Path.join(["work", "spec_requests"]) 
+    schema_root = Path.join(["work", "spec_requests"])
     req_path = Path.join(root, "request.json")
     ack_path = Path.join(root, "ack.json")
 
     ok =
       file_json(req_path, "request.json") and
-      ack_ok?(ack_path, schema_root) and
-      messages_ok?(root, schema_root) and
-      render_ok?(id)
+        ack_ok?(ack_path, schema_root) and
+        messages_ok?(root, schema_root) and
+        render_ok?(id)
 
     if ok, do: Mix.shell().info("Lint OK for #{id}"), else: Mix.raise("Lint failed for #{id}")
   end
 
   defp file_json(path, label) do
-    with true <- File.exists?(path) || (Mix.shell().error("Missing #{label}"); false),
+    with true <-
+           File.exists?(path) ||
+             (
+               Mix.shell().error("Missing #{label}")
+               false
+             ),
          {:ok, _} <- decode(path) do
       true
     else
@@ -44,8 +49,12 @@ defmodule Mix.Tasks.Spec.Lint do
   defp optional_json(path, _label) do
     if File.exists?(path) do
       case decode(path) do
-        {:ok, _} -> true
-        _ -> (Mix.shell().error("Invalid JSON: #{path}"); false)
+        {:ok, _} ->
+          true
+
+        _ ->
+          Mix.shell().error("Invalid JSON: #{path}")
+          false
       end
     else
       true
@@ -62,8 +71,13 @@ defmodule Mix.Tasks.Spec.Lint do
         _ = ts_optional_ok?(ack["eta_iso8601"], "ack.eta_iso8601")
         true
       else
-        {:error, reason} -> Mix.shell().error("Ack validation failed: #{inspect(reason)}"); false
-        _ -> Mix.shell().error("Invalid ack JSON: #{ack_path}"); false
+        {:error, reason} ->
+          Mix.shell().error("Ack validation failed: #{inspect(reason)}")
+          false
+
+        _ ->
+          Mix.shell().error("Invalid ack JSON: #{ack_path}")
+          false
       end
     else
       true
@@ -79,17 +93,25 @@ defmodule Mix.Tasks.Spec.Lint do
   end
 
   defp messages_ok?(root, schema_root) do
-    schema = read_schema(Path.join(schema_root, "message.schema.json")) |> case do
-      {:ok, s} -> {:ok, s}
-      other -> other
-    end
+    schema =
+      read_schema(Path.join(schema_root, "message.schema.json"))
+      |> case do
+        {:ok, s} -> {:ok, s}
+        other -> other
+      end
+
     [Path.join(root, "inbox"), Path.join(root, "outbox")]
     |> Enum.flat_map(&Path.wildcard(Path.join(&1, "msg_*.json")))
     |> Enum.map(fn mpath ->
       case decode(mpath) do
         {:ok, m} ->
           base_checks =
-            with true <- is_binary(m["body"]) and byte_size(m["body"]) > 0 or (Mix.shell().error("Empty body: #{mpath}"); false),
+            with true <-
+                   (is_binary(m["body"]) and byte_size(m["body"]) > 0) or
+                     (
+                       Mix.shell().error("Empty body: #{mpath}")
+                       false
+                     ),
                  true <- attachments_ok?(root, mpath, m["attachments"] || []),
                  true <- ts_ok?(m["created_at"], "message.created_at") do
               true
@@ -97,15 +119,27 @@ defmodule Mix.Tasks.Spec.Lint do
               _ -> false
             end
 
-          schema_checks = case schema do
-            {:ok, s} -> case validate(m, s) do
-              :ok -> true
-              {:error, reason} -> Mix.shell().error("Message schema fail (#{mpath}): #{inspect(reason)}"); false
+          schema_checks =
+            case schema do
+              {:ok, s} ->
+                case validate(m, s) do
+                  :ok ->
+                    true
+
+                  {:error, reason} ->
+                    Mix.shell().error("Message schema fail (#{mpath}): #{inspect(reason)}")
+                    false
+                end
+
+              _ ->
+                true
             end
-            _ -> true
-          end
+
           base_checks and schema_checks
-        _ -> Mix.shell().error("Invalid message JSON: #{mpath}"); false
+
+        _ ->
+          Mix.shell().error("Invalid message JSON: #{mpath}")
+          false
       end
     end)
     |> Enum.all?()
@@ -114,11 +148,19 @@ defmodule Mix.Tasks.Spec.Lint do
   defp attachments_ok?(root, mpath, files) do
     Enum.map(files, fn rel ->
       cond do
-        is_binary(rel) and not String.contains?(rel, "..") and File.exists?(Path.join(root, rel)) -> true
-        is_binary(rel) and String.contains?(rel, "..") -> Mix.shell().error("Unsafe attachment path (..): #{rel} in #{mpath}"); false
-        true -> Mix.shell().error("Missing attachment for #{mpath}: #{inspect(rel)}"); false
+        is_binary(rel) and not String.contains?(rel, "..") and File.exists?(Path.join(root, rel)) ->
+          true
+
+        is_binary(rel) and String.contains?(rel, "..") ->
+          Mix.shell().error("Unsafe attachment path (..): #{rel} in #{mpath}")
+          false
+
+        true ->
+          Mix.shell().error("Missing attachment for #{mpath}: #{inspect(rel)}")
+          false
       end
-    end) |> Enum.all?()
+    end)
+    |> Enum.all?()
   end
 
   defp read_schema(path) do
@@ -133,10 +175,17 @@ defmodule Mix.Tasks.Spec.Lint do
     case value do
       s when is_binary(s) ->
         case DateTime.from_iso8601(s) do
-          {:ok, _dt, _} -> true
-          _ -> Mix.shell().error("Invalid ISO8601 timestamp for #{label}: #{inspect(s)}"); false
+          {:ok, _dt, _} ->
+            true
+
+          _ ->
+            Mix.shell().error("Invalid ISO8601 timestamp for #{label}: #{inspect(s)}")
+            false
         end
-      _ -> Mix.shell().error("Missing or invalid timestamp for #{label}"); false
+
+      _ ->
+        Mix.shell().error("Missing or invalid timestamp for #{label}")
+        false
     end
   end
 
@@ -150,12 +199,20 @@ defmodule Mix.Tasks.Spec.Lint do
       :ok
     end
   end
+
   defp validate(doc, %{"type" => "array", "items" => item_schema}) when is_list(doc) do
-    Enum.reduce_while(doc, :ok, fn v, :ok -> case validate(v, item_schema) do :ok -> {:cont, :ok}; err -> {:halt, err} end end)
+    Enum.reduce_while(doc, :ok, fn v, :ok ->
+      case validate(v, item_schema) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
   end
+
   defp validate(value, %{"type" => "string", "enum" => enum}) when is_binary(value) do
     if value in enum, do: :ok, else: {:error, {:enum, value, enum}}
   end
+
   defp validate(value, %{"type" => "string"}) when is_binary(value), do: :ok
   defp validate(value, %{"type" => "object"}) when is_map(value), do: :ok
   defp validate(value, %{"type" => "array"}) when is_list(value), do: :ok
@@ -169,15 +226,32 @@ defmodule Mix.Tasks.Spec.Lint do
   defp validate_properties(doc, props) do
     Enum.reduce_while(props, :ok, fn {k, pschema}, :ok ->
       case Map.fetch(doc, k) do
-        :error -> {:cont, :ok}
+        :error ->
+          {:cont, :ok}
+
         {:ok, v} ->
           # Recurse for nested objects with required
           case pschema do
             %{"type" => "object"} = s ->
-              case validate(v, s) do :ok -> {:cont, :ok}; err -> {:halt, {:error, {k, err}}} end
-            %{"enum" => _} = s -> case validate(v, Map.put(s, "type", s["type"] || infer_type(v))) do :ok -> {:cont, :ok}; err -> {:halt, {:error, {k, err}}} end
-            %{"type" => _} = s -> case validate(v, s) do :ok -> {:cont, :ok}; err -> {:halt, {:error, {k, err}}} end
-            _ -> {:cont, :ok}
+              case validate(v, s) do
+                :ok -> {:cont, :ok}
+                err -> {:halt, {:error, {k, err}}}
+              end
+
+            %{"enum" => _} = s ->
+              case validate(v, Map.put(s, "type", s["type"] || infer_type(v))) do
+                :ok -> {:cont, :ok}
+                err -> {:halt, {:error, {k, err}}}
+              end
+
+            %{"type" => _} = s ->
+              case validate(v, s) do
+                :ok -> {:cont, :ok}
+                err -> {:halt, {:error, {k, err}}}
+              end
+
+            _ ->
+              {:cont, :ok}
           end
       end
     end)
@@ -193,7 +267,9 @@ defmodule Mix.Tasks.Spec.Lint do
       Mix.Task.run("spec.thread.render", ["--id", id])
       true
     rescue
-      e -> Mix.shell().error("thread render failed: #{inspect(e)}"); false
+      e ->
+        Mix.shell().error("thread render failed: #{inspect(e)}")
+        false
     end
   end
 end

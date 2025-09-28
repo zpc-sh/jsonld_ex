@@ -12,7 +12,11 @@ defmodule Mix.Tasks.Spec.Autosync do
   def run(argv) do
     {opts, _, _} = OptionParser.parse(argv, switches: [id: :string])
     id = Keyword.get(opts, :id) || Mix.raise("Missing --id")
-    base = System.get_env("SPEC_HANDOFF_DIR") || Mix.raise("Set SPEC_HANDOFF_DIR or pass --peer to spec.sync")
+
+    base =
+      System.get_env("SPEC_HANDOFF_DIR") ||
+        Mix.raise("Set SPEC_HANDOFF_DIR or pass --peer to spec.sync")
+
     peer = Path.join(base, id)
     Mix.Task.run("spec.sync", ["--id", id, "--peer", peer])
   end

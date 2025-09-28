@@ -12,7 +12,17 @@ defmodule Mix.Tasks.Spec.Hub.Sync do
 
   @impl true
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv, switches: [id: :string, project: :string, hub: :string, no_export: :boolean, no_index: :boolean])
+    {opts, _, _} =
+      OptionParser.parse(argv,
+        switches: [
+          id: :string,
+          project: :string,
+          hub: :string,
+          no_export: :boolean,
+          no_index: :boolean
+        ]
+      )
+
     id = req!(opts, :id)
     project = req!(opts, :project)
     hub = req!(opts, :hub)
@@ -37,8 +47,8 @@ defmodule Mix.Tasks.Spec.Hub.Sync do
 
     Mix.shell().info(
       "Synced #{id} -> #{dest}" <>
-        (Keyword.get(opts, :no_export, false) && "" || " (JSON-LD exported") <>
-        (Keyword.get(opts, :no_index, false) && ")" || ", index refreshed)")
+        ((Keyword.get(opts, :no_export, false) && "") || " (JSON-LD exported") <>
+        ((Keyword.get(opts, :no_index, false) && ")") || ", index refreshed)")
     )
   end
 
@@ -46,12 +56,17 @@ defmodule Mix.Tasks.Spec.Hub.Sync do
     for path <- Path.wildcard(Path.join(src, "**/*"), match_dot: true) do
       rel = Path.relative_to(path, src)
       target = Path.join(dst, rel)
+
       cond do
-        File.dir?(path) -> File.mkdir_p!(target)
+        File.dir?(path) ->
+          File.mkdir_p!(target)
+
         File.regular?(path) ->
           File.mkdir_p!(Path.dirname(target))
           File.cp!(path, target)
-        true -> :ok
+
+        true ->
+          :ok
       end
     end
   end

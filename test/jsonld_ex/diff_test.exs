@@ -30,6 +30,7 @@ defmodule JsonldEx.DiffTest do
         "@id" => "http://example.com/person/1",
         "name" => "John Doe"
       }
+
       new = %{
         "@context" => "https://schema.org/",
         "@id" => "http://example.com/person/1",
@@ -58,8 +59,8 @@ defmodule JsonldEx.DiffTest do
       old = %{"name" => "John"}
       new = %{"name" => "Jane"}
 
-      assert {:error, {:invalid_strategy, :invalid}} = 
-        Diff.diff(old, new, strategy: :invalid)
+      assert {:error, {:invalid_strategy, :invalid}} =
+               Diff.diff(old, new, strategy: :invalid)
     end
 
     test "inverse diff works" do
@@ -88,7 +89,8 @@ defmodule JsonldEx.DiffTest do
       {:ok, merged} = Diff.merge_diffs([diff1, diff2], strategy: :structural)
       {:ok, result} = Diff.patch(base, merged, strategy: :structural)
 
-      assert result["age"] == 31  # Later diff wins
+      # Later diff wins
+      assert result["age"] == 31
       assert result["city"] == "NYC"
     end
 
@@ -100,10 +102,12 @@ defmodule JsonldEx.DiffTest do
       {:ok, diff1} = Diff.diff(base, v1, strategy: :operational, actor_id: "actor1")
       {:ok, diff2} = Diff.diff(base, v2, strategy: :operational, actor_id: "actor2")
 
-      {:ok, merged} = Diff.merge_diffs([diff1, diff2], 
-        strategy: :operational, 
-        conflict_resolution: :last_write_wins)
-      
+      {:ok, merged} =
+        Diff.merge_diffs([diff1, diff2],
+          strategy: :operational,
+          conflict_resolution: :last_write_wins
+        )
+
       assert is_map(merged)
       assert length(merged.operations) >= 0
     end
@@ -113,7 +117,7 @@ defmodule JsonldEx.DiffTest do
     test "validates structural patches" do
       document = %{"name" => "John", "age" => 30}
       valid_patch = %{"name" => ["John", "Jane"]}
-      
+
       {:ok, is_valid} = Diff.validate_patch(document, valid_patch, strategy: :structural)
       assert is_valid == true
     end
@@ -121,7 +125,7 @@ defmodule JsonldEx.DiffTest do
     test "detects invalid patches" do
       document = %{"name" => "John"}
       invalid_patch = %{"nonexistent" => ["old", "new"]}
-      
+
       {:ok, is_valid} = Diff.validate_patch(document, invalid_patch, strategy: :structural)
       assert is_valid == false
     end

@@ -19,7 +19,9 @@ defmodule JsonldEx do
         json_binary
         |> Native.expand_binary(opts)
         |> decode_binary_result()
-      error -> error
+
+      error ->
+        error
     end
   end
 
@@ -34,13 +36,14 @@ defmodule JsonldEx do
   # Rust-side parallel batch processing with SIMD optimizations
   def expand_batch_rust(documents, _opts \\ []) do
     # Convert documents to JSON strings for zero-copy processing
-    document_strings = Enum.map(documents, fn doc ->
-      case Jason.encode(doc) do
-        {:ok, json_string} -> json_string
-        _ -> "{\"error\": \"Invalid document\"}"
-      end
-    end)
-    
+    document_strings =
+      Enum.map(documents, fn doc ->
+        case Jason.encode(doc) do
+          {:ok, json_string} -> json_string
+          _ -> "{\"error\": \"Invalid document\"}"
+        end
+      end)
+
     case Native.batch_expand(document_strings) do
       {:ok, results} ->
         Enum.map(results, fn result_str ->
@@ -49,7 +52,9 @@ defmodule JsonldEx do
             error -> error
           end
         end)
-      error -> error
+
+      error ->
+        error
     end
   end
 
@@ -77,7 +82,7 @@ defmodule JsonldEx do
       error -> error
     end
   end
-  
+
   defp decode_result(result), do: result
 
   defp decode_binary_result({:ok, result_binary}) when is_binary(result_binary) do
@@ -86,6 +91,6 @@ defmodule JsonldEx do
       error -> error
     end
   end
-  
+
   defp decode_binary_result(result), do: result
 end

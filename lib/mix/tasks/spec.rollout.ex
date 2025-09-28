@@ -32,7 +32,9 @@ defmodule Mix.Tasks.Spec.Rollout do
       |> Enum.uniq()
 
     if dests == [] do
-      Mix.raise("No destinations found. Pass --dest/--dests, set SPEC_ROLLOUT_TARGETS, or ensure ../jsonld and ../markdown_ld exist.")
+      Mix.raise(
+        "No destinations found. Pass --dest/--dests, set SPEC_ROLLOUT_TARGETS, or ensure ../jsonld and ../markdown_ld exist."
+      )
     end
 
     failures =
@@ -42,10 +44,16 @@ defmodule Mix.Tasks.Spec.Rollout do
         Mix.Task.reenable("spec.export.docs")
         Mix.Task.reenable("spec.export.tools")
         Mix.Task.run("spec.export.tools", ["--dest", dest])
+
         case verify(dest) do
-          :ok -> acc
+          :ok ->
+            acc
+
           {:error, missing} ->
-            Mix.shell().error("Verification failed for #{dest}; missing: \n  - " <> Enum.join(missing, "\n  - "))
+            Mix.shell().error(
+              "Verification failed for #{dest}; missing: \n  - " <> Enum.join(missing, "\n  - ")
+            )
+
             acc + 1
         end
       end)

@@ -18,14 +18,16 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
 
     src_root = Path.join([File.cwd!(), "work", "spec_requests", id])
     File.dir?(src_root) || Mix.raise("Request not found: #{src_root}")
-    dest_root = Path.join([hub, "requests", project, id, "jsonld"]) 
+    dest_root = Path.join([hub, "requests", project, id, "jsonld"])
     File.mkdir_p!(dest_root)
 
-    context_rel = Path.join(["..", "..", "..", "schemas", "contexts", "spec.jsonld"]) # ../../../schemas/contexts/spec.jsonld
+    # ../../../schemas/contexts/spec.jsonld
+    context_rel = Path.join(["..", "..", "..", "schemas", "contexts", "spec.jsonld"])
 
     # request
     req_json = read_json!(Path.join(src_root, "request.json"))
     statuses = status_list(src_root)
+
     req_ld = %{
       "@context" => context_rel,
       "@id" => "urn:spec:" <> project <> ":" <> id,
@@ -44,12 +46,18 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
       "status" => List.last(statuses || ["proposed"]),
       "updatedAt" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
-    File.write!(Path.join(dest_root, "request.jsonld"), Jason.encode_to_iodata!(req_ld, pretty: true))
+
+    File.write!(
+      Path.join(dest_root, "request.jsonld"),
+      Jason.encode_to_iodata!(req_ld, pretty: true)
+    )
 
     # ack (optional)
     ack_path = Path.join(src_root, "ack.json")
+
     if File.exists?(ack_path) do
       ack_json = read_json!(ack_path)
+
       ack_ld = %{
         "@context" => context_rel,
         "@id" => "urn:specack:" <> project <> ":" <> id,
@@ -60,6 +68,7 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
         "eta" => ack_json["eta_iso8601"],
         "updatedAt" => ack_json["updated_at"]
       }
+
       File.write!(Path.join(dest_root, "ack.jsonld"), Jason.encode_to_iodata!(ack_ld, pretty: true))
     end
 
@@ -69,6 +78,7 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
       |> Enum.each(fn msg_path ->
         m = read_json!(msg_path)
         basename = Path.basename(msg_path) |> String.replace(~r/\.json$/, "")
+
         msg_ld = %{
           "@context" => context_rel,
           "@id" => "urn:specmsg:" <> project <> ":" <> id <> ":" <> basename,
@@ -83,9 +93,14 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
           "createdAt" => m["created_at"],
           "updatedAt" => m["updated_at"]
         }
+
         out_dir = Path.join(dest_root, "messages")
         File.mkdir_p!(out_dir)
-        File.write!(Path.join(out_dir, basename <> ".jsonld"), Jason.encode_to_iodata!(msg_ld, pretty: true))
+
+        File.write!(
+          Path.join(out_dir, basename <> ".jsonld"),
+          Jason.encode_to_iodata!(msg_ld, pretty: true)
+        )
       end)
     end
 
@@ -93,6 +108,7 @@ defmodule Mix.Tasks.Spec.Export.Jsonld do
   end
 
   defp read_json!(path), do: Jason.decode!(File.read!(path))
+
   defp status_list(root) do
     Path.wildcard(Path.join(root, "*.status"))
     |> Enum.map(&Path.basename/1)

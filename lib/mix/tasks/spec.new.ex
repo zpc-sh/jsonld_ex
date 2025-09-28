@@ -12,9 +12,16 @@ defmodule Mix.Tasks.Spec.New do
 
   @impl true
   def run([project | rest]) when project in ["jsonld", "markdown_ld"] do
-    {opts, _, _} = OptionParser.parse(rest,
-      switches: [title: :string, slug: :string, motivation: :string, priority: :string, version: :string]
-    )
+    {opts, _, _} =
+      OptionParser.parse(rest,
+        switches: [
+          title: :string,
+          slug: :string,
+          motivation: :string,
+          priority: :string,
+          version: :string
+        ]
+      )
 
     title = required!(opts, :title)
     slug = Keyword.get(opts, :slug) || slugify(title)
@@ -45,6 +52,7 @@ defmodule Mix.Tasks.Spec.New do
 
     Mix.shell().info("Created spec request: #{root}")
   end
+
   def run(_), do: Mix.raise("Usage: mix spec.new <jsonld|markdown_ld> --title \"...\"")
 
   defp required!(opts, key), do: Keyword.get(opts, key) || Mix.raise("Missing required --#{key}")

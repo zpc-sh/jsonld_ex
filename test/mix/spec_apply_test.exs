@@ -29,6 +29,7 @@ defmodule Mix.SpecApplyTest do
       "status" => "open",
       "created_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
+
     File.write!(Path.join(@inbox, "msg_#{name}.json"), Jason.encode!(msg, pretty: true))
   end
 
@@ -39,6 +40,7 @@ defmodule Mix.SpecApplyTest do
 
   test "RFC6902: add append '-'; copy and move" do
     File.write!(@target, ~s({"a":1,"arr":[0]}))
+
     patch = %{
       "file" => @target,
       "ops" => [
@@ -47,6 +49,7 @@ defmodule Mix.SpecApplyTest do
         %{"op" => "move", "from" => "/arr/0", "path" => "/arr/-"}
       ]
     }
+
     rel = "inbox/patches/patch_rfc6902.json"
     File.write!(Path.join(@work, rel), Jason.encode!(patch, pretty: true))
     write_msg!("0001", rel)
@@ -63,7 +66,11 @@ defmodule Mix.SpecApplyTest do
     rel = "inbox/patches/patch_replace.json"
 
     # replace missing path should fail without --replace-create
-    patch1 = %{"file" => @target, "ops" => [%{"op" => "replace", "path" => "/new/val", "value" => 5}]}
+    patch1 = %{
+      "file" => @target,
+      "ops" => [%{"op" => "replace", "path" => "/new/val", "value" => 5}]
+    }
+
     File.write!(Path.join(@work, rel), Jason.encode!(patch1, pretty: true))
     write_msg!("0002", rel)
     assert_raise(RuntimeError, fn -> run_apply!() end)
@@ -93,6 +100,7 @@ defmodule Mix.SpecApplyTest do
       "baseline_sha256" => good,
       "ops" => [%{"op" => "replace", "path" => "/k", "value" => false}]
     }
+
     rel = "inbox/patches/patch_baseline.json"
     File.write!(Path.join(@work, rel), Jason.encode!(patch_good, pretty: true))
     write_msg!("0003", rel)
@@ -100,7 +108,12 @@ defmodule Mix.SpecApplyTest do
     assert Jason.decode!(File.read!(@target))["k"] == false
 
     # Bad baseline should fail without --force
-    patch_bad = %{"file" => @target, "baseline_sha256" => String.duplicate("0", 64), "ops" => [%{"op" => "replace", "path" => "/k", "value" => true}]}
+    patch_bad = %{
+      "file" => @target,
+      "baseline_sha256" => String.duplicate("0", 64),
+      "ops" => [%{"op" => "replace", "path" => "/k", "value" => true}]
+    }
+
     File.write!(Path.join(@work, rel), Jason.encode!(patch_bad, pretty: true))
     assert_raise(RuntimeError, fn -> run_apply!() end)
 
@@ -127,4 +140,3 @@ defmodule Mix.SpecApplyTest do
     assert String.contains?(pretty, "\n  \"t\": \"y\"")
   end
 end
-
