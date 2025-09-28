@@ -8,6 +8,7 @@
 .PHONY: version-patch version-minor version-major hex-build hex-publish hex-docs hex-retire
 .PHONY: release-patch release-minor release-major release-full hex-check hex-auth
 .PHONY: version-current version-check changelog-update release-status pre-release-check
+.PHONY: nif-build nif-clean nif-update-checksum nif-force-build
 
 # Default target
 .DEFAULT_GOAL := help
@@ -80,6 +81,12 @@ help: ## Show this help message
 	@echo "  make changelog-update # Update CHANGELOG.md with new version"
 	@echo "  make release-status  # Check release readiness"
 	@echo "  make pre-release-check # Run all pre-release checks"
+	@echo ""
+	@echo "$(BLUE)NIF Management:$(NC)"
+	@echo "  make nif-build       # Build NIF and update checksums"
+	@echo "  make nif-clean       # Clean NIF artifacts"
+	@echo "  make nif-update-checksum # Update checksum file for current version"
+	@echo "  make nif-force-build # Force rebuild NIF from source"
 
 # BUILD: Clean all artifacts
 clean: ## Clean all build artifacts
@@ -105,6 +112,36 @@ test: ## Run tests with coverage
 macos: ## Force local build on macOS (fixes LTO compiler errors)
 	@echo "$(BLUE)[BUILD]$(NC) Building locally on macOS..."
 	JSONLD_NIF_FORCE_BUILD=1 mix compile
+
+# NIF: NIF management
+nif-build: ## Build NIF and update checksums
+	@echo "$(BLUE)[NIF]$(NC) Building NIF and updating checksums..."
+	@CURRENT_VERSION=$$(grep 'version:' mix.exs | sed 's/.*version: "\([^"]*\)".*/\1/'); \
+	echo "$(GREEN)Building NIF for version:$(NC) $$CURRENT_VERSION"; \
+	JSONLD_NIF_FORCE_BUILD=1 mix compile; \
+	make nif-update-checksum
+
+nif-clean: ## Clean NIF artifacts
+	@echo "$(BLUE)[NIF]$(NC) Cleaning NIF artifacts..."
+	rm -f checksum-Elixir.JsonldEx.Native.exs
+	rm -rf priv/native/*.so priv/native/*.dylib
+	rm -rf _build/*/lib/jsonld_ex/priv/native/
+	@echo "$(GREEN)✓$(NC) NIF artifacts cleaned"
+
+nif-update-checksum: ## Update checksum file for current version
+	@echo "$(BLUE)[NIF]$(NC) Updating checksum file..."
+	@CURRENT_VERSION=$$(grep 'version:' mix.exs | sed 's/.*version: "\([^"]*\)".*/\1/'); \
+	echo "$(GREEN)Updating checksums for version:$(NC) $$CURRENT_VERSION"; \
+	JSONLD_NIF_FORCE_BUILD=1 mix rustler_precompiled.download JsonldEx.Native --only-local; \
+	echo "$(GREEN)✓$(NC) Checksum file updated"
+
+nif-force-build: ## Force rebuild NIF from source
+	@echo "$(BLUE)[NIF]$(NC) Force rebuilding NIF from source..."
+	@CURRENT_VERSION=$$(grep 'version:' mix.exs | sed 's/.*version: "\([^"]*\)".*/\1/'); \
+	echo "$(GREEN)Force building NIF for version:$(NC) $$CURRENT_VERSION"; \
+	JSONLD_NIF_FORCE_BUILD=1 mix clean; \
+	JSONLD_NIF_FORCE_BUILD=1 mix compile; \
+	make nif-update-checksum
 
 # BUILD: Comprehensive benchmarks
 bench: ## Run comprehensive benchmarks
@@ -183,6 +220,8 @@ version-patch: ## Increment patch version (0.4.2 -> 0.4.3)
 	echo "$(GREEN)Updating version:$(NC) $$CURRENT_VERSION -> $$NEW_VERSION"; \
 	sed -i.bak "s/version: \"$$CURRENT_VERSION\",/version: \"$$NEW_VERSION\",/" mix.exs && rm mix.exs.bak; \
 	echo "$(GREEN)✓$(NC) Version updated in mix.exs"; \
+	echo "$(BLUE)Updating NIF checksums for new version...$(NC)"; \
+	make nif-clean && make nif-build; \
 	echo "$(BLUE)Next steps:$(NC)"; \
 	echo "  1. Update CHANGELOG.md: make changelog-update"; \
 	echo "  2. Run pre-release checks: make pre-release-check"; \
@@ -197,6 +236,8 @@ version-minor: ## Increment minor version (0.4.2 -> 0.5.0)
 	echo "$(GREEN)Updating version:$(NC) $$CURRENT_VERSION -> $$NEW_VERSION"; \
 	sed -i.bak "s/version: \"$$CURRENT_VERSION\",/version: \"$$NEW_VERSION\",/" mix.exs && rm mix.exs.bak; \
 	echo "$(GREEN)✓$(NC) Version updated in mix.exs"; \
+	echo "$(BLUE)Updating NIF checksums for new version...$(NC)"; \
+	make nif-clean && make nif-build; \
 	echo "$(BLUE)Next steps:$(NC)"; \
 	echo "  1. Update CHANGELOG.md: make changelog-update"; \
 	echo "  2. Run pre-release checks: make pre-release-check"; \
@@ -211,6 +252,8 @@ version-major: ## Increment major version (0.4.2 -> 1.0.0)
 	echo "$(GREEN)Updating version:$(NC) $$CURRENT_VERSION -> $$NEW_VERSION"; \
 	sed -i.bak "s/version: \"$$CURRENT_VERSION\",/version: \"$$NEW_VERSION\",/" mix.exs && rm mix.exs.bak; \
 	echo "$(GREEN)✓$(NC) Version updated in mix.exs"; \
+	echo "$(BLUE)Updating NIF checksums for new version...$(NC)"; \
+	make nif-clean && make nif-build; \
 	echo "$(BLUE)Next steps:$(NC)"; \
 	echo "  1. Update CHANGELOG.md: make changelog-update"; \
 	echo "  2. Run pre-release checks: make pre-release-check"; \
@@ -394,7 +437,9 @@ release-full: ## Interactive release workflow with all options
 		"4") echo "$(YELLOW)[INPUT]$(NC) Enter new version (e.g., 1.0.0-rc.1):"; \
 		   read -r NEW_VERSION </dev/tty; \
 		   sed -i.bak "s/version: \"$$CURRENT_VERSION\",/version: \"$$NEW_VERSION\",/" mix.exs && rm mix.exs.bak; \
-		   echo "$(GREEN)✓$(NC) Version set to $$NEW_VERSION" ;; \
+		   echo "$(GREEN)✓$(NC) Version set to $$NEW_VERSION"; \
+		   echo "$(BLUE)Updating NIF checksums for new version...$(NC)"; \
+		   make nif-clean && make nif-build ;;
 		"5") echo "$(BLUE)Skipping version bump$(NC)" ;; \
 		*) echo "$(YELLOW)[ERROR]$(NC) Invalid choice: '$$RELEASE_TYPE'"; exit 1 ;; \
 	esac; \
@@ -533,13 +578,16 @@ pre-release-check: clean ## Run all pre-release checks
 	@echo "$(BLUE)[3/6]$(NC) Checking code format and linting..."
 	@make format lint
 	@echo ""
-	@echo "$(BLUE)[4/6]$(NC) Building documentation..."
+	@echo "$(BLUE)[4/7]$(NC) Building NIF and updating checksums..."
+	@make nif-force-build
+	@echo ""
+	@echo "$(BLUE)[5/7]$(NC) Building documentation..."
 	@make docs
 	@echo ""
-	@echo "$(BLUE)[5/6]$(NC) Building hex package..."
+	@echo "$(BLUE)[6/7]$(NC) Building hex package..."
 	@make hex-build
 	@echo ""
-	@echo "$(BLUE)[6/6]$(NC) Checking release status..."
+	@echo "$(BLUE)[7/7]$(NC) Checking release status..."
 	@make release-status
 	@echo ""
 	@echo "$(GREEN)✓$(NC) Pre-release checks completed!"
