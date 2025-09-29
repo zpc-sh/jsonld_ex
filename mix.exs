@@ -24,7 +24,6 @@ defmodule JsonldEx.MixProject do
   defp deps do
     [
       {:rustler, "~> 0.34.0", runtime: false},
-      {:rustler_precompiled, "~> 0.8"},
       {:jason, "~> 1.2"},
       {:json_ld, "~> 1.0", only: [:dev, :test]},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}

@@ -120,10 +120,16 @@ build_prod() {
     print_step "Building for production (full optimizations)..."
     
     export MIX_ENV=prod
-    export CARGO_PROFILE=production
     
-    # Maximum optimization flags
-    export RUSTFLAGS="$RUSTFLAGS -C lto=fat -C codegen-units=1 -C panic=abort"
+    # On macOS, avoid RUSTFLAGS that conflict with Rustler's embed-bitcode=no
+    if [[ $(uname -s) == "Darwin" ]]; then
+        print_warning "macOS detected - letting Cargo.toml production profile handle optimization"
+        # Clear any existing RUSTFLAGS to avoid conflicts
+        unset RUSTFLAGS
+    else
+        # On Linux, we can use LTO safely
+        export RUSTFLAGS="$RUSTFLAGS -C lto=fat -C codegen-units=1 -C panic=abort"
+    fi
     
     mix deps.get
     mix compile
@@ -214,6 +220,12 @@ build_pgo() {
     
     # First, build instrumented version
     export RUSTFLAGS="$RUSTFLAGS -C profile-generate=/tmp/pgo-data"
+    
+    # Skip PGO on macOS due to embed-bitcode/LTO conflicts
+    if [[ $(uname -s) == "Darwin" ]]; then
+        print_warning "macOS detected - PGO may not work optimally with embed-bitcode, proceeding anyway"
+    fi
+    
     build_prod
     
     # Run representative workload to generate profile data
